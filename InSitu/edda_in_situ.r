@@ -150,12 +150,12 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
     lst$taxo <- lst$taxo[-ind_0,]
   }  
   
-  # # normalization according to DNA amount (pmoA communities)
-  # if(co != 'V3V4'){
-  #   mr <- round(mr * env$RNA_extrac_pmoA)
-  # } else {
-  #   mr <- round(mr * na.omit(env$RNA_extrac_SSU))
-  # }
+  # normalization according to DNA amount (pmoA communities)
+  if(co != 'V3V4'){
+    mr <- round(mr * env$RNA_extrac_pmoA)
+  } else {
+    mr <- round(mr * na.omit(env$RNA_extrac_SSU))
+  }
 
   # normalization selection high occurence: high_occ 1/1000
   mr_hc <- as.data.frame(t(apply(mr, 1, function(x) ifelse(x >= 0.001 * sum(x), x, 0))))
@@ -180,14 +180,14 @@ dir_save <- paste0(dir_out, 'saves')
 dir.create(dir_save, showWarnings=F)
 
 file <- paste0(dir_save, '/lst_data.Rdata')
-save(lst_data, file=file)
+# save(lst_data, file=file)
 load(file)
 #
 
 ### RDA ####
 
 # on the 3 communities
-lst_info <- foreach(i = names(lst_data)) %dopar% {
+lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
   
   mr_log <- lst_data[[i]]$mr_log
   en <- env[row.names(env) %in% row.names(mr_log),]
@@ -265,7 +265,11 @@ lst_info <- foreach(i = names(lst_data)) %dopar% {
   
 }
 
-names(lst_info) <- names(lst_data)
+names(lst_pvs_rda) <- names(lst_data)
+
+file <- paste0(dir_save, '/lst_pvs_rda.Rdata')
+# save(lst_pvs_rda, file=file)
+load(file)
 #
 
 ### IndVal ####
@@ -328,11 +332,12 @@ lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
   nr <- nrow(mr_rnd)
   
   # palette and pdf size
-  pal <- colorRampPalette(c('blue','red'))(length(unique(unlist(mr_rnd))))
+  pal <- colorRampPalette(c('blue','white','red'))(length(unique(unlist(mr_rnd))))
   
   wdt <- 30
   hei <- 2.5+nc*0.25
   
+  #---
   # heatmap
   pdf(paste0(dir_out, 'heatmap_IV_', i, '_HC.pdf'), width=wdt, height=hei)
   par(mai=c(1.5,21,1, 0.5))
@@ -345,21 +350,20 @@ lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
   
   for(j in 1:nr){
     for(k in 1:nc){
-      rect(j, nc-(k-1), j+1, nc-k, col=pal[mr_rnd[j,k]], border=NA)
+      rect(j, nc-(k-1), j+1, nc-k, col=ifelse(mr_rnd[j,k] == 0, 'grey', pal[mr_rnd[j,k]]), border=NA)
     }
   }
   
   # legend
   xs <- seq(0, usr[1]+diff(usr[1:2])*0.2, length.out=length(pal))
-  ys <- usr[3] - 3.5*rat_y
+  ys <- usr[3] - 1.5*rat_y
   
   points(xs, rep(ys, length(xs)), pch=19, col=pal, xpd=NA)
   
-  mtext(signif(2^seq(log(min(mr_abu[mr_abu != 0]),base=2), log(max(mr_abu),base=2), length.out=5), digits=2), 1, 4, 
-        at=seq(xs[1], xs[length(xs)], length.out=5), cex=0.5, las=2)
+  mtext(signif(2^seq(log(min(mr_abu[mr_abu != 0]),base=2), log(max(mr_abu),base=2), length.out=5), digits=2), 1, 2, 
+        at=seq(xs[1], xs[length(xs)], length.out=5), cex=0.75, las=2)
 
   # axes
-  axis(1, seq(1.5, nr+0.5), row.names(mr_rnd), F, family='mono', las=2, cex=0.3)
   axis(2, seq(nc-0.5, 0.5), names(mr_rnd), F, las=2)
 
   # taxo
@@ -385,7 +389,7 @@ lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
     gr <- gr[-c(1, length(gr))]
     mod <- seq_along(gr) %% 2 == 1
     
-    mtext(levels(en[[j]]), 3, 3-ind, at=gr[mod], cex=1-(ind/5)+1/5)
+    mtext(levels(en[[j]]), 3, 3-ind, at=gr[mod], cex=1-(ind/10)+1/10)
     segments(gr[mod == F & gr %in% line_done == F], usr[4] + (4-ind) * rat_y, 
              gr[mod == F & gr %in% line_done == F], 0, xpd=NA, lty=ind)
     
@@ -401,6 +405,7 @@ lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
   # plot end
   dev.off()
   
+  #---
   # fasta
   file <- paste0(dir_out, 'IV_abu_', i, '_HC.fa')
   if(file.exists(file)){file.remove(file)}

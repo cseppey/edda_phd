@@ -27,7 +27,7 @@ pch_temp_manip <- c(22,24)
 # download ####
 
 dir_in <- 'Projets/edda_phd/stat/in/'
-dir_out <- 'Projets/edda_phd/stat/experiment/out_without_rna_norm/'
+dir_out <- 'Projets/edda_phd/stat/experiment/out/'
 dir.create(dir_out, showWarnings=F)
 
 files <- list.files(dir_in)
@@ -141,8 +141,8 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
     lst$taxo <- lst$taxo[-ind_0,]
   }  
   
-  # # normalization according to DNA amount (pmoA communities)
-  # mr <- round(mr * env$RNA_extrac_pmoA)
+  # normalization according to DNA amount (pmoA communities)
+  mr <- round(mr * env$RNA_extrac_pmoA)
   
   # normalization selection non rare: non rare 1/1000
   mr_nr <- mr[,colSums(mr) >= 0.001*sum(mr)]
@@ -167,14 +167,14 @@ dir_save <- paste0(dir_out, 'saves/')
 dir.create(dir_save, showWarnings=F)
 
 file <- paste0(dir_save, 'lst_data.Rdata')
-save(lst_data, file=file)
+# save(lst_data, file=file)
 load(file)
 #
 
 # RDAs ####
 
 # on the 2 communities
-lst_rda <- foreach(i = names(lst_data)) %dopar% {
+lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
   
   mr_log <- lst_data[[i]]$mr_log
   
@@ -265,7 +265,12 @@ lst_rda <- foreach(i = names(lst_data)) %dopar% {
   
 }
 
-names(lst_rda) <- names(lst_data)
+names(lst_pvs_rda) <- names(lst_data)
+
+file <- paste0(dir_save, '/lst_pvs_rda.Rdata')
+save(lst_pvs_rda, file=file)
+load(file)
+
 #
 
 # Indval ####
