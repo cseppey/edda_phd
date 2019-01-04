@@ -29,7 +29,7 @@ pch_smp_date <- c(21:23)
 ### Download ####
 
 dir_in <- 'Projets/edda_phd/stat/in/'
-dir_out <- 'Projets/edda_phd/stat/InSitu/out/'
+dir_out <- 'Projets/edda_phd/stat/InSitu/out_without_rna_norm/'
 dir.create(dir_out, showWarnings=F)
 
 files <- list.files(dir_in)
@@ -150,12 +150,12 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
     lst$taxo <- lst$taxo[-ind_0,]
   }  
   
-  # normalization according to DNA amount (pmoA communities)
-  if(co != 'V3V4'){
-    mr <- round(mr * env$RNA_extrac_pmoA)
-  } else {
-    mr <- round(mr * na.omit(env$RNA_extrac_SSU))
-  }
+  # # normalization according to DNA amount (pmoA communities)
+  # if(co != 'V3V4'){
+  #   mr <- round(mr * env$RNA_extrac_pmoA)
+  # } else {
+  #   mr <- round(mr * na.omit(env$RNA_extrac_SSU))
+  # }
 
   # normalization selection high occurence: high_occ 1/1000
   mr_hc <- as.data.frame(t(apply(mr, 1, function(x) ifelse(x >= 0.001 * sum(x), x, 0))))
@@ -448,10 +448,9 @@ for(i in names(lst_data)){
 }
 
 
-### OTUs nucl dist ####
 
 
-#
+#####
 
 
 

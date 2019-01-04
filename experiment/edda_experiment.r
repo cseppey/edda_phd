@@ -27,7 +27,7 @@ pch_temp_manip <- c(22,24)
 # download ####
 
 dir_in <- 'Projets/edda_phd/stat/in/'
-dir_out <- 'Projets/edda_phd/stat/experiment/out/'
+dir_out <- 'Projets/edda_phd/stat/experiment/out_without_rna_norm/'
 dir.create(dir_out, showWarnings=F)
 
 files <- list.files(dir_in)
@@ -141,8 +141,8 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
     lst$taxo <- lst$taxo[-ind_0,]
   }  
   
-  # normalization according to DNA amount (pmoA communities)
-  mr <- round(mr * env$RNA_extrac_pmoA)
+  # # normalization according to DNA amount (pmoA communities)
+  # mr <- round(mr * env$RNA_extrac_pmoA)
   
   # normalization selection non rare: non rare 1/1000
   mr_nr <- mr[,colSums(mr) >= 0.001*sum(mr)]
