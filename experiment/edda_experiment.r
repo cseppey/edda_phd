@@ -27,7 +27,7 @@ pch_temp_manip <- c(22,24)
 # download ####
 
 dir_in <- 'Projets/edda_phd/stat/in/'
-dir_out <- 'Projets/edda_phd/stat/experiment/out181219/'
+dir_out <- 'Projets/edda_phd/stat/experiment/out/'
 dir.create(dir_out, showWarnings=F)
 
 files <- list.files(dir_in)
@@ -167,7 +167,7 @@ dir_save <- paste0(dir_out, 'saves/')
 dir.create(dir_save, showWarnings=F)
 
 file <- paste0(dir_save, 'lst_data.Rdata')
-# save(lst_data, file=file)
+save(lst_data, file=file)
 load(file)
 #
 
@@ -197,7 +197,7 @@ lst_rda <- foreach(i = names(lst_data)) %dopar% {
   names(lst) <- c('tot', levels(env$treatment))
   
   ### test all samples, only grazed, only exclozed
-  pdf(paste0(dir_out, 'rda/rda_non_rare_0.001_log_', i, '.pdf'), height=10, width=10)
+  pdf(paste0(dir_out, 'rda_non_rare_0.001_log_', i, '.pdf'), height=10, width=10)
   par(mfrow=c(2,2))
   
   for(j in seq_along(lst)){
@@ -349,14 +349,14 @@ for(i in names(lst_data)){
       hei <- mai[1]+mai[3] + nc*heat_space
       
       #---
-      pdf(paste0(dir_out, 'iv/iv_non_rare_0.001_', i, '_', j, '.pdf'), width=wth, height=hei)
+      pdf(paste0(dir_out, 'IV_non_rare_0.001_', i, '_', j, '.pdf'), width=wth, height=hei)
       par(mai=mai, xpd=NA)
       
       plot.new()
       plot.window(xlim=c(0,nr), ylim=c(0,nc), xaxs='i', yaxs='i')
       
       #---
-      file <- paste0(dir_out, 'iv/iv_non_rare_0.001_', i, '_', j, '.fa')
+      file <- paste0(dir_out, 'IV_non_rare_0.001_', i, '_', j, '.fa')
       if(file.exists(file)){file.remove(file)}
         
       for(k in 1:nc){
@@ -439,14 +439,14 @@ for(i in names(lst_data)){
                     ch4_augmentation=env$ch4_manip == 'aug')
   
   #---
-  pdf(paste0(dir_out, 'pie_chart/pie_non_rare_0.001_', i, '.pdf'), height=15, width=7)
+  pdf(paste0(dir_out, 'pie_non_rare_0.001_', i, '.pdf'), height=15, width=7)
   
   agg <- pie_taxo(mr, taxo, tax_lev=tax_lev, selec_smp=selec_smp)
   
   dev.off()
   
   #---
-  write.table(agg, paste0(dir_out, 'pie_chart/pie_non_rare_0.001_', i, '.csv'))
+  write.table(agg, paste0(dir_out, 'pie_non_rare_0.001_', i, '.csv'))
 }
 #####
 

@@ -29,7 +29,7 @@ pch_smp_date <- c(21:23)
 ### Download ####
 
 dir_in <- 'Projets/edda_phd/stat/in/'
-dir_out <- 'Projets/edda_phd/stat/InSitu/out181128/'
+dir_out <- 'Projets/edda_phd/stat/InSitu/out/'
 dir.create(dir_out, showWarnings=F)
 
 files <- list.files(dir_in)
@@ -180,7 +180,7 @@ dir_save <- paste0(dir_out, 'saves')
 dir.create(dir_save, showWarnings=F)
 
 file <- paste0(dir_save, '/lst_data.Rdata')
-# save(lst_data, file=file)
+save(lst_data, file=file)
 load(file)
 #
 
