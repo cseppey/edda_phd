@@ -173,7 +173,7 @@ dir_save <- paste0(dir_out, 'saves/')
 dir.create(dir_save, showWarnings=F)
 
 file <- paste0(dir_save, 'lst_data.Rdata')
-# save(lst_data, file=file)
+save(lst_data, file=file)
 load(file)
 #
 
@@ -298,7 +298,7 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
 names(lst_pvs_rda) <- names(lst_data)
 
 file <- paste0(dir_save, '/lst_pvs_rda.Rdata')
-# save(lst_pvs_rda, file=file)
+save(lst_pvs_rda, file=file)
 load(file)
 
 #
@@ -307,40 +307,38 @@ load(file)
 print('indval')
 
 for(i in names(lst_data)){
-  
-  # check for factors treatments, temp and ch4 manipulation
-  fact_iv <- c('treatment','temp_manip','ch4_manip')
-  
-  l_iv <- vector('list',3)
-  names(l_iv) <- fact_iv
-  for(j in fact_iv) {
 
-    # take the initial sample or not (treatment or manipulations)
-    ind_smp <- env[[j]] != 'no_inc' 
+  l_iv <- vector('list',2)
+  names(l_iv) <- levels(env$treatment)
+  
+  # check in each treatment
+  for(j in levels(env$treatment)){
+    # take the the initial sample or not (treatment or manipulations)
+    ind_smp <- env$treatment == j & env$ch4_manip != 'no_inc'
     en <- droplevels(env[ind_smp,])
     
     # reorder in function of the factor used for the indval
-    ord_mat <- en[,c(j, fact_iv[fact_iv != j])]
-    ord <- order(ord_mat[,1], ord_mat[,2], ord_mat[,3], en$replicate)
+    ord <- order(en$ch4_manip, en$temp_manip, en$replicate)
     en <- en[ord,]
     
     # reorder the community
     mr <- lst_data[[i]]$mr_nr[ind_smp,]
     mr_ord <- mr[ord,order(colSums(mr), decreasing=T)]
+    mr_ord <- mr_ord[,colSums(mr_ord) != 0]
     
     taxo <- lst_data[[i]]$taxo
     ass <- lst_data[[i]]$ass
     
     # indval
     set.seed(0)
-    iv <- indval(mr_ord, en[[j]], numitr=permu)
+    iv <- indval(mr_ord, en$ch4_manip, numitr=permu)
     
     # reteive the iv for the two factors of given factor
     iv_lev1 <- which(iv$maxcls == 1 & iv$pval < 0.01)
     iv_lev2 <- which(iv$maxcls == 2 & iv$pval < 0.01)
     
     li <- list(iv_lev1, iv_lev2)
-    names(li) <- levels(en[[j]])
+    names(li) <- levels(en$ch4_manip)
 
     l_iv[[j]] <- li    
     
@@ -352,7 +350,7 @@ for(i in names(lst_data)){
       # retreive the iv plus the dominant OTU until 90% of the sequences
       ull <- unlist(li)
       mr_abu <- mr_ord[,ull]
-      otu_check <- sapply(strsplit(names(ull), '.', fixed=T), '[[', 2)
+      otu_check <- sapply(strsplit(names(ull), '.', fixed=T), function(x) rev(x)[1])
       while(sum(mr_abu) < 0.9*sum(mr_ord)){
         non_check <- names(mr_ord) %in% otu_check == F
         cs <- colSums(mr_ord[,non_check])
@@ -370,7 +368,7 @@ for(i in names(lst_data)){
       nr <- nrow(mr_abu_log)
       
       # pallette
-      pal <- colorRampPalette(c('red','green'))(max(mr_abu_log))
+      pal <- colorRampPalette(c('red','white','blue'))(max(mr_abu_log))
       
       # define the graf parameter
       taxo_space <- 2
@@ -407,7 +405,11 @@ for(i in names(lst_data)){
   
         # response
         for(l in 1:nrow(mr_abu_log)){
-          rect(l,nc-k, l-1,nc-k+1, col=pal[mr_abu_log[l,k]], border=F, xpd=NA)
+          if(mr_abu_log[l,k] != 0){
+            rect(l,nc-k, l-1,nc-k+1, col=pal[mr_abu_log[l,k]], border=F, xpd=NA)
+          } else {
+            rect(l,nc-k, l-1,nc-k+1, col='grey', border=F, xpd=NA, density=20)
+          }
         }
         
         # fasta
@@ -417,8 +419,6 @@ for(i in names(lst_data)){
         
       }
       
-      axis(1, seq(0.5,nrow(mr_abu_log)-0.5), row.names(mr_abu_log), family='mono', las=2)
-      
       # legend
       x <- c(0,nr/5)
       y <- -mai[1]/heat_space*c(0.5,0.55)
@@ -427,27 +427,38 @@ for(i in names(lst_data)){
       points(seq(x[1], x[2], length.out=length(pal)), rep(y[1], length(pal)), col=pal, pch=19)
       
       text(seq(x[1], x[2], length.out=5), rep(y[2], 5),
-           signif(2^seq(log(rng[1],2),log(rng[2],2), length.out=5),2), srt=90, cex=0.5, pos=2, offset=0)
+           signif(2^seq(log(rng[1],2),log(rng[2],2), length.out=5),2), srt=90, cex=0.75, pos=2, offset=0)
       
       # abline
       abline(h=nc-cumsum(sapply(li, length)))
       
       # factors
       
-      lin <- list(lin1=list(lin=ifelse(nr == 36, 18, 16),
-                            at_txt=if(nr == 36){c(8, 26)} else {c(8, 24)},
-                            txt=levels(ord_mat[,1])),
-                  lin2=list(lin=if(nr == 36){c(8,16, 26,34)} else {c(8, 24)},
-                            at_txt=if(nr == 36){c(4,12, 17, 22,30, 35)} else {c(4,12, 20,28)},
-                            txt=rep(levels(ord_mat[,2]), 2)),
-                  lin3=list(lin=if(nr == 36){c(4,12, 22,30)} else {c(4,12, 20,28)},
-                            at_txt=if(nr == 36){c(2,6,10,14, 17, 20,24,28,32, 35)} else {c(2,6,10,14, 18,22,26,30)},
-                            txt=if(nr == 36){rep(levels(ord_mat[,3])[c(1,2,1,2,3)], 2)} else {rep(levels(ord_mat[,3]), 4)}))
+      e <- en[,c('ch4_manip','temp_manip','replicate')]
+      
+      lin <- NULL
+        
+      for(l in 1:ncol(e)){
+        # get the ablines
+        ab <- cumsum(table(apply(as.matrix(e[,1:l]), 1, function(x) paste(x, collapse='_'))))
+        ab <- ab-ab[1]
+
+        # get the at
+        at <- ab + ab[2]/2
+        
+        # get the texts
+        txt <- strsplit(names(ab), split='_')
+        txt <- sapply(txt, function(x) rev(x)[1])
+        
+        ab <- ab[-1]
+        
+        lin[[names(e)[l]]] <- list(ab=ab, at=at, txt=txt)
+      }
       
       lapply(seq_along(lin), function(x) {
-        segments(lin[[x]]$lin, 0, lin[[x]]$lin, nc+4-x, lty=x, xpd=NA)
-        mtext(lin[[x]]$txt, 3, 4-x, at=lin[[x]]$at_txt, cex=1/x)
-        mtext(names(ord_mat)[x], 3, 4-x, at=-rap_ons_hs, cex=1/x)
+        segments(lin[[x]]$ab, 0, lin[[x]]$ab, nc+4-x, lty=x, xpd=NA)
+        mtext(lin[[x]]$txt, 3, 4-x, at=lin[[x]]$at, cex=1/((x+2)/3))
+        mtext(names(e)[x],  3, 4-x, at=-rap_ons_hs, cex=1/((x+2)/3))
       })
       #
       
@@ -472,8 +483,8 @@ for(i in names(lst_data)){
   selec_smp <- list(tot=1:nrow(mr),
                     grazed=env$treatment == 'Grazed',
                     exclozed=env$treatment == 'Exclosed',
-                    ch4_normal=env$ch4_manip == 'nor',
-                    ch4_augmentation=env$ch4_manip == 'aug')
+                    ch4_normal=env$ch4_manip == '0.1',
+                    ch4_augmentation=env$ch4_manip == '1')
   
   #---
   pdf(paste0(dir_out, 'pie_non_rare_0.001_', i, '.pdf'), height=15, width=7)
