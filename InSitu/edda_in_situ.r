@@ -27,9 +27,10 @@ pch_smp_date <- c(21:23)
 
 
 ### Download ####
+print('download')
 
 dir_in <- 'Projets/edda_phd/stat/in/'
-dir_out <- 'Projets/edda_phd/stat/InSitu/out_without_rna_norm/'
+dir_out <- 'Projets/edda_phd/stat/InSitu/out/'
 dir.create(dir_out, showWarnings=F)
 
 files <- list.files(dir_in)
@@ -79,6 +80,7 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
   names(lst$ass) <- c('OTU_id','e-value','pid','taxo','GB_id','seq')
 
   lst$ass$taxo <- gsub('Candidatus ', 'C_', lst$ass$taxo)
+  lst$ass$taxo <- gsub(' _[[:digit:]]*_', '', lst$ass$taxo)
   lst$ass$taxo <- gsub(' ', '_', lst$ass$taxo)
 
   taxo <- strsplit(sapply(strsplit(as.character(lst$ass$taxo), ' '), '[[', 1), ';')
@@ -185,6 +187,7 @@ load(file)
 #
 
 ### RDA ####
+print('RDA')
 
 # on the 3 communities
 lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
@@ -273,6 +276,7 @@ load(file)
 #
 
 ### IndVal ####
+print('indval')
 
 # on the 2 pmoA communities (raw communities: normalized on DNA amount)
 lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
@@ -420,7 +424,7 @@ lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
 
 
 ### Pie chart ####
-# pie-charts
+print('pie-charts')
 
 for(i in names(lst_data)){
   
@@ -440,7 +444,7 @@ for(i in names(lst_data)){
     tax_lev <- 1:4
   } else {
     wdt <- 8
-    tax_lev <- 5:7
+    tax_lev <- 6:8
   }
   
   # graf

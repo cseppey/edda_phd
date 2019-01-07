@@ -20,11 +20,15 @@ registerDoSNOW(cl)
 # script variables
 permu <- 10000
 
-col_treat <- c('red','green')
-bg_ch4_manip <- c('grey80','grey40')
-pch_temp_manip <- c(22,24)
+col_ch4_temp <- c('black','skyblue1','pink1','blue3','red3')
+pch_treat <- c(16,17)
+
+# col_treat <- c('red','green')
+# bg_ch4_manip <- c('grey80','grey40')
+# pch_temp_manip <- c(22,24)
 
 # download ####
+print('download')
 
 dir_in <- 'Projets/edda_phd/stat/in/'
 dir_out <- 'Projets/edda_phd/stat/experiment/out/'
@@ -40,6 +44,8 @@ env$treatment <- factor(env$treatment, levels=levels(env$treatment)[2:1])
 env$replicate <- factor(paste0(substr(env$treatment, 1,1), env$replicate))
 env$temp_manip <- factor(env$temp_manip, levels=levels(env$temp_manip)[c(3,1,2)])
 env$ch4_manip <- factor(env$ch4_manip, levels=levels(env$ch4_manip)[c(3,1,2)])
+env$full_manip <- factor(apply(env[,grep('manip', names(env))], 1, function(x) paste0(x, collapse='_')))
+env$full_manip <- factor(env$full_manip, levels=levels(env$full_manip)[c(5,3,4,1,2)])
 
 # comunities
 
@@ -172,93 +178,117 @@ load(file)
 #
 
 # RDAs ####
+print('RDA')
 
 # on the 2 communities
 lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
-  
-  mr_log <- lst_data[[i]]$mr_log
-  
-  # substract the initial response from the final response
-  for(j in levels(env$replicate)){
-    ind_rep <- which(env$replicate == j)
-    mr_rep <- as.matrix(mr_log[ind_rep,])
-    mr_log[ind_rep[-1],] <- sweep(mr_rep[-1,], 2, mr_rep[1,])
-  }
-  
-  mr_log <- mr_log[-c(1:4),]
-  en <- env[-c(1:4),]
-  en <- droplevels(en)
   
   # save infos on 
   #   variables signif
   #   axes signif
   
-  lst <- list(NULL, NULL, NULL)
-  names(lst) <- c('tot', levels(env$treatment))
-  
-  ### test all samples, only grazed, only exclozed
-  pdf(paste0(dir_out, 'rda_non_rare_0.001_log_', i, '.pdf'), height=10, width=10)
-  par(mfrow=c(2,2))
-  
+  lst <- list(incu=list(NULL, NULL, NULL),
+              subs=list(NULL, NULL, NULL))
   for(j in seq_along(lst)){
-    
-    # select samples
-    ind_smp <- switch(j,
-                      '1' = 1:nrow(mr_log),
-                      '2' = which(en$treatment == 'Grazed'),
-                      '3' = which(en$treatment == 'Exclosed'))
-    
-    e <- en[ind_smp,]
-    m <- mr_log[ind_smp,]
-    m <- m[,colSums(m) != 0]
-    
-    ### RDA
-    # build formula
-    if(j == 1){
-      formu <- as.formula('m ~ treatment * temp_manip + treatment * ch4_manip + temp_manip * ch4_manip + ch4_rate')
-    } else {
-      formu <- as.formula('m ~ temp_manip * ch4_manip + ch4_rate')
-    }
-    
-    # rda
-    rda <- capscale(formu, data=e)
-    
-    # test factors|variables and axes
-    set.seed(0)
-    ano_facvar <- anova(rda, by='terms', permutations=permu)
-    ano_axes <- anova(rda, by='axis', permutations=permu)
-    
-    signif <- c(ano_facvar$`Pr(>F)`, ano_axes$`Pr(>F)`)
-    names(signif) <- c(row.names(ano_facvar), row.names(ano_axes))
-    
-    lst[[j]] <- signif
-    
-    ### plot
-    # characteristics
-    s <- summary(rda)
-    
-    sites <- s$site[,1:2]
-    var_exp <- s$concont$importance[2,1:2]
-    
-    # plot
-    plot(sites, col=col_treat[as.numeric(e$treatment)], bg=bg_ch4_manip[as.numeric(e$ch4_manip)], pch=pch_temp_manip[e$temp_manip],
-         xlim=range(sites[,1]), ylim=range(sites[,2]), cex=1.5, lwd=3,
-         xlab=paste('RDA1\nvar_exp =', signif(var_exp[1], 2)), ylab=paste('RDA2\nvar_exp =', signif(var_exp[2], 2)),
-         main=paste(i, ifelse(j == 1, 'all samples', levels(e$treatment)[j-1])),
-         sub=paste('community ~', paste(rda$call$formula[[3]][c(2,1,3)], collapse=''), collapse=''))
-  
-    ordispider(rda, e$replicate, col='grey80')
-      
-    ordisurf(rda, e$ch4_rate, col='grey80', add=T)
-    
+    names(lst[[j]]) <- c('tot', levels(env$treatment))
   }
   
-  ### legend
-  plot.new()
-  legend(0.5,0.5, legend=paste0(c('','', 'CH4 ','CH4 ', 'temp ','temp '), unlist(sapply(e[,c('treatment','ch4_manip','temp_manip')], levels))), 
-         bty='n', xjust=0.5, yjust=0.5, col=c(col_treat, 1,1, 1,1), pch=c(21,21, 21,21, pch_temp_manip), pt.bg=c(0,0, bg_ch4_manip, 0,0), pt.lwd=2)
-  
-  dev.off()
+  # do on raw seq number (with initial samples) or after incubation - initial samples
+  for(j in names(lst)){
+    
+    mr_log <- lst_data[[i]]$mr_log
+    en <- env
+    
+    if(j == 'subs'){
+      
+      # substract the initial response from the final response
+      for(k in levels(env$replicate)){
+        ind_rep <- which(env$replicate == k)
+        mr_rep <- as.matrix(mr_log[ind_rep,])
+        mr_log[ind_rep[-1],] <- sweep(mr_rep[-1,], 2, mr_rep[1,])
+      }
+      
+      mr_log <- mr_log[-c(1:4),]
+      en <- env[-c(1:4),]
+      # en <- droplevels(en)
+    }
+    
+    #---
+    pdf(paste0(dir_out, 'rda_non_rare_0.001_log_', i, '_', j, '.pdf'), height=10, width=10)
+    par(mfrow=c(2,2))
+
+    ### test all samples, only grazed, only exclozed
+    for(k in seq_along(lst[[j]])){
+
+      # select samples
+      ind_smp <- switch(k,
+                        '1' = 1:nrow(mr_log),
+                        '2' = which(en$treatment == 'Grazed'),
+                        '3' = which(en$treatment == 'Exclosed'))
+
+      e <- en[ind_smp,]
+      m <- mr_log[ind_smp,]
+      m <- m[,colSums(m) != 0]
+
+      ### RDA
+      # build formula
+      if(k == 1){
+        formu <- as.formula('m ~ treatment * temp_manip + treatment * ch4_manip + temp_manip * ch4_manip + ch4_rate')
+      } else {
+        formu <- as.formula('m ~ temp_manip * ch4_manip + ch4_rate')
+      }
+
+      if(j == 'incu'){
+        formu <- as.formula(paste0('m~', as.character(formu[[3]][2])))
+      }
+
+      # rda
+      rda <- capscale(formu, data=e)
+
+      # test factors|variables and axes
+      set.seed(0)
+      ano_facvar <- anova(rda, by='terms', permutations=permu)
+      ano_axes <- anova(rda, by='axis', permutations=permu)
+
+      signif <- c(ano_facvar$`Pr(>F)`, ano_axes$`Pr(>F)`)
+      names(signif) <- c(row.names(ano_facvar), row.names(ano_axes))
+
+      lst[[j]][[k]] <- signif
+
+      ### plot
+      # characteristics
+      s <- summary(rda)
+
+      sites <- s$site[,1:2]
+      var_exp <- s$concont$importance[2,1:2]
+
+      # plot
+      plot(sites, type='n', xlim=range(sites[,1]), ylim=range(sites[,2]), cex=1.5, lwd=3,
+           xlab=paste('RDA1\nvar_exp =', signif(var_exp[1], 2)), ylab=paste('RDA2\nvar_exp =', signif(var_exp[2], 2)),
+           main=paste(i, ifelse(k == 1, 'all samples', levels(e$treatment)[k-1])),
+           sub=paste('community ~', paste(rda$call$formula[[3]][c(2,1,3)], collapse=''), collapse=''))
+
+      if(j == 2){
+        ordisurf(rda, e$ch4_rate, col=1, lwd=1.2, add=T)
+      }
+
+      ordispider(rda, e$replicate, col='grey80')
+
+      points(sites, col=col_ch4_temp[as.numeric(e$full_manip)], pch=pch_treat[e$treatment])
+
+    }
+
+    ### legend
+    plot.new()
+    legend(0.5,0.5, legend=c('Grazed','Exclosed','no incubation',
+                             expression('CH'[4]*' 0.1% temperature 8°C'),
+                             expression('CH'[4]*' 1% temperature 8°C'),
+                             expression('CH'[4]*' 0.1% temperature 15°C'),
+                             expression('CH'[4]*' 1% temperature 15°C')), 
+           bty='n', xjust=0.5, yjust=0.5, col=c(1,1, col_ch4_temp), pch=c(1,2, rep(16,5)), pt.lwd=2)
+    
+    dev.off()
+  }
   
   ### rda outputs foreach loop
   return(lst)
@@ -268,12 +298,13 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
 names(lst_pvs_rda) <- names(lst_data)
 
 file <- paste0(dir_save, '/lst_pvs_rda.Rdata')
-save(lst_pvs_rda, file=file)
+# save(lst_pvs_rda, file=file)
 load(file)
 
 #
 
 # Indval ####
+print('indval')
 
 for(i in names(lst_data)){
   
@@ -429,6 +460,7 @@ for(i in names(lst_data)){
 }
 
 # Pie Chart ####
+print('pie-chart')
 
 for(i in names(lst_data)){
   mr <- lst_data[[i]]$mr_nr
