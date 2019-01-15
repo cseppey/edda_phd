@@ -23,10 +23,6 @@ permu <- 10000
 col_ch4_temp <- c('black','skyblue1','pink1','blue3','red3')
 pch_treat <- c(16,17)
 
-# col_treat <- c('red','green')
-# bg_ch4_manip <- c('grey80','grey40')
-# pch_temp_manip <- c(22,24)
-
 # download ####
 print('download')
 
