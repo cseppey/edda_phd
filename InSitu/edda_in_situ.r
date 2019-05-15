@@ -193,25 +193,32 @@ file <- paste0(dir_save, '/lst_data.Rdata')
 load(file)
 #
 
-
 ### IndVal ####
 print('indval')
 
 # on the 2 pmoA communities (raw communities: normalized on DNA amount)
-lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
+lst_iv <- foreach(i = names(lst_data)) %dopar% {
   
   mr_hc <- lst_data[[i]]$mr_hc
   ass <- lst_data[[i]]$ass
   taxo <- lst_data[[i]]$taxo
   
   # sort samples by treatment, sampling, plot
-  ord_smp <- order(env$treatment, env$sampling_date, env$replicate)
-  en <- env[ord_smp,]
+  en <- env[row.names(env) %in% row.names(mr_hc),]
+  ord_smp <- order(en$treatment, en$sampling_date, en$replicate)
+  en <- en[ord_smp,]
   mr_ord <- mr_hc[ord_smp,]
+  
+  # if(i == 'V3V4'){ # not concluent as the X49 OTU that is indval for grz is "drown" by the 10 other Methylobacter
+  #   taxo_ord <- taxo[names(mr_ord),]
+  #   mr_ord <- aggregate(t(mr_ord), list(taxo_ord$Genus), sum)
+  #   row.names(mr_ord) <- mr_ord[,1]
+  #   mr_ord <- as.data.frame(t(mr_ord[,-1]))
+  # }
   
   # indval
   set.seed(0)
-  iv <- indval(mr_ord, en$treatment, numiter=permu)
+  iv <- indval(mr_ord, en$treatment, numitr=1000)
   
   # for the grazed and exclozed
   l_iv <- list(iv_gr=which(iv$maxcls == 1 & iv$pval <= 0.001),
@@ -251,11 +258,17 @@ lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
   # log transfo
   mr_abu_log <- decostand(mr_abu, 'log')
   mr_rnd <- ceiling(mr_abu_log)
+  
+  uniq <- sort(unique(unlist(mr_rnd)))
+  uniq <- uniq[uniq != 0]
+  mr_rnd <- as.data.frame(ifelse(as.matrix(mr_rnd) == 0, 0, as.matrix(mr_rnd)-min(uniq)))
+  uniq <- uniq-min(uniq)+1
+  
   nc <- ncol(mr_rnd)
   nr <- nrow(mr_rnd)
   
   # palette and pdf size
-  pal <- colorRampPalette(c('blue','white','red'))(length(unique(unlist(mr_rnd))))
+  pal <- colorRampPalette(c('blue','white','red'))(length(uniq))
   
   wdt <- 30
   hei <- 2.5+nc*0.25
@@ -341,7 +354,7 @@ lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
   return(l_iv)
 }
 
-names(lst_iv) <- names(lst_data)[1:2]
+names(lst_iv) <- names(lst_data)
 
 ### RDA ####
 print('RDA')
@@ -374,6 +387,7 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
     e <- en[ind_smp,]
     m <- mr_log[ind_smp,]
     m <- m[,colSums(m) != 0]
+    t <- lst_data[[i]]$taxo[names(m),]
     
     ### RDA
     # build formula
@@ -413,9 +427,15 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
     # ch4
     ordisurf(rda, e$ch4_rate, col='grey80', add=T)
     
+    # Methylobacter
+    points(spec[t$Genus == 'Methylobacter',], col='orange', pch=19)
+    points(spec['X49',1], spec['X49',2], col=2)
+    
     # indval (must do the indval before: L289-434)
-    points(spec[colnames(lst_iv[[i]]$iv_gr$mr),], col='orange', pch=19)
-    points(spec[colnames(lst_iv[[i]]$iv_ex$mr),], col='blue', pch=19)
+    if(j != 1){
+      points(spec[colnames(lst_iv[[i]]$iv_gr$mr),], col='orange', pch=19)
+      points(spec[colnames(lst_iv[[i]]$iv_ex$mr),], col='blue', pch=19)
+    }
   }
   
   ### legend
@@ -458,13 +478,13 @@ for(i in names(lst_data)){
     tax_lev <- 1:4
   } else {
     wdt <- 8
-    tax_lev <- 6:8
+    tax_lev <- 6:7
   }
   
   # graf
   pdf(paste0(dir_out, 'pie_', i, '.pdf'), width=wdt, height=11)
   
-  pie_taxo(mr, taxo, tax_lev=tax_lev, adj=0.1, cex=0.4, selec_smp=selec_smp)
+  q <- pie_taxo(mr, taxo, tax_lev=tax_lev, adj=0.1, cex=0.4, selec_smp=selec_smp)
   
   dev.off()
   
@@ -474,49 +494,5 @@ for(i in names(lst_data)){
 
 
 #####
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
