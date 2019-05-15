@@ -135,6 +135,13 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
 
   if(co == 'mb661'){thresh <- c(465,474)} else if(co == 'A682'){thresh <- c(492,495)} else {thresh <- c(370,435)}
 
+  pdf(paste0(dir_out, 'seq_length_', co, '.pdf'))
+  
+  plot(sort(seq_l), xlab='OTUs indexes', ylab='OTUs lengths')
+  abline(h=thresh, col=2)
+  
+  dev.off()
+  
   ind_length <- which(seq_l < thresh[1] | seq_l > thresh[2])
   mr <- mr[,-ind_length]
   lst$ass <- lst$ass[-ind_length,]
@@ -186,101 +193,13 @@ file <- paste0(dir_save, '/lst_data.Rdata')
 load(file)
 #
 
-### RDA ####
-print('RDA')
-
-# on the 3 communities
-lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
-  
-  mr_log <- lst_data[[i]]$mr_log
-  en <- env[row.names(env) %in% row.names(mr_log),]
-  
-  # save infos on 
-  #   variables signif
-  #   axes signif
-  
-  lst_info <- list(NULL, NULL, NULL)
-  names(lst_info) <- c('tot', levels(en$treatment))
-    
-  ### test all samples, only grazed, only exclozed
-  pdf(paste0(dir_out, 'rda_high_occ_0.001_log_', i, '.pdf'), height=10, width=10)
-  par(mfrow=c(2,2))
-  
-  for(j in seq_along(lst_info)){
-    
-    # select samples
-    ind_smp <- switch(j,
-                      '1' = 1:nrow(mr_log),
-                      '2' = which(en$treatment == 'grazed'),
-                      '3' = which(en$treatment == 'exclosed'))
-    
-    e <- en[ind_smp,]
-    m <- mr_log[ind_smp,]
-    m <- m[,colSums(m) != 0]
-    
-    ### RDA
-    # build formula
-    if(j == 1){
-      formu <- as.formula('m ~ sampling_date * site + treatment * sampling_date + treatment * site + ch4_rate')
-    } else {
-      formu <- as.formula('m ~ sampling_date * site + ch4_rate')
-    }
-    
-    # rda
-    rda <- capscale(formu, data=e)
-    
-    set.seed(0)
-    ano_facvar <- anova(rda, by='terms', permutations=permu)
-    ano_axes <- anova(rda, by='axis', permutations=permu)
-    
-    signif <- c(ano_facvar$`Pr(>F)`, ano_axes$`Pr(>F)`)
-    names(signif) <- c(row.names(ano_facvar), row.names(ano_axes))
-    
-    lst_info[[j]] <- signif
-    
-    ### plot
-    # characteristics
-    s <- summary(rda)
-  
-    sites <- s$site[,1:2]
-    var_exp <- s$concont$importance[2,1:2]
-    
-    # plot
-    plot(sites, col=col_treat[as.numeric(e$treatment)], pch=pch_smp_date[as.numeric(e$sampling_date)], bg=bg_site[as.numeric(e$site)],
-         xlim=range(sites[,1]), ylim=range(sites[,2]), cex=1.5, lwd=3,
-         xlab=paste('RDA1\nvar_exp =', signif(var_exp[1], 2)), ylab=paste('RDA2\nvar_exp =', signif(var_exp[2], 2)),
-         main=paste(i, ifelse(j == 1, 'all samples', levels(e$treatment)[j-1])),
-         sub=paste('community ~', paste(rda$call$formula[[3]][c(2,1,3)], collapse=''), collapse=''))
-    
-    ordisurf(rda, e$ch4_rate, col='grey80', add=T)
-    
-  }
-  
-  ### legend
-  plot.new()
-  legend(0.5,0.5, legend=unlist(sapply(en[,c('treatment','site','sampling_date')], levels)), bty='n', xjust=0.5, yjust=0.5,
-         col=c(col_treat, bg_site, 1,1,1), pt.bg=c(0,0, bg_site, 0,0,0), pch=c(rep(21,4), pch_smp_date), pt.lwd=2)
-  
-  dev.off()
-  
-  ### rda outputs foreach loop
-  return(lst_info)
-  
-}
-
-names(lst_pvs_rda) <- names(lst_data)
-
-file <- paste0(dir_save, '/lst_pvs_rda.Rdata')
-# save(lst_pvs_rda, file=file)
-load(file)
-#
 
 ### IndVal ####
 print('indval')
 
 # on the 2 pmoA communities (raw communities: normalized on DNA amount)
 lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
-
+  
   mr_hc <- lst_data[[i]]$mr_hc
   ass <- lst_data[[i]]$ass
   taxo <- lst_data[[i]]$taxo
@@ -366,10 +285,10 @@ lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
   
   mtext(signif(2^seq(log(min(mr_abu[mr_abu != 0]),base=2), log(max(mr_abu),base=2), length.out=5), digits=2), 1, 2, 
         at=seq(xs[1], xs[length(xs)], length.out=5), cex=0.75, las=2)
-
+  
   # axes
   axis(2, seq(nc-0.5, 0.5), names(mr_rnd), F, las=2)
-
+  
   # taxo
   axis(2, seq(nc-0.5, 0.5), ass_abu$pid, F, 3, las=2)
   axis(2, seq(nc-0.5, 0.5), ass_abu$GB_id, F, 7, las=2)
@@ -422,6 +341,101 @@ lst_iv <- foreach(i = names(lst_data)[1:2]) %dopar% {
   return(l_iv)
 }
 
+names(lst_iv) <- names(lst_data)[1:2]
+
+### RDA ####
+print('RDA')
+
+# on the 3 communities
+lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
+  
+  mr_log <- lst_data[[i]]$mr_log
+  en <- env[row.names(env) %in% row.names(mr_log),]
+  
+  # save infos on 
+  #   variables signif
+  #   axes signif
+  
+  lst_info <- list(NULL, NULL, NULL)
+  names(lst_info) <- c('tot', levels(en$treatment))
+    
+  ### test all samples, only grazed, only exclozed
+  pdf(paste0(dir_out, 'rda_high_occ_0.001_log_', i, '.pdf'), height=10, width=10)
+  par(mfrow=c(2,2))
+  
+  for(j in seq_along(lst_info)){
+    
+    # select samples
+    ind_smp <- switch(j,
+                      '1' = 1:nrow(mr_log),
+                      '2' = which(en$treatment == 'grazed'),
+                      '3' = which(en$treatment == 'exclosed'))
+    
+    e <- en[ind_smp,]
+    m <- mr_log[ind_smp,]
+    m <- m[,colSums(m) != 0]
+    
+    ### RDA
+    # build formula
+    if(j == 1){
+      formu <- as.formula('m ~ sampling_date * site + treatment * sampling_date + treatment * site + ch4_rate')
+    } else {
+      formu <- as.formula('m ~ sampling_date * site + ch4_rate')
+    }
+    
+    # rda
+    rda <- capscale(formu, data=e)
+    
+    set.seed(0)
+    # ano_facvar <- anova(rda, by='terms', permutations=permu)
+    # ano_axes <- anova(rda, by='axis', permutations=permu)
+    # 
+    # signif <- c(ano_facvar$`Pr(>F)`, ano_axes$`Pr(>F)`)
+    # names(signif) <- c(row.names(ano_facvar), row.names(ano_axes))
+    # 
+    # lst_info[[j]] <- signif
+    
+    ### plot
+    # characteristics
+    s <- summary(rda)
+  
+    sites <- s$site[,1:2]
+    spec <- s$species[,1:2]
+    var_exp <- s$concont$importance[2,1:2]
+    
+    # plot
+    plot(sites, col=col_treat[as.numeric(e$treatment)], pch=pch_smp_date[as.numeric(e$sampling_date)], bg=bg_site[as.numeric(e$site)],
+         xlim=range(sites[,1]), ylim=range(sites[,2]), cex=1.5, lwd=3,
+         xlab=paste('RDA1\nvar_exp =', signif(var_exp[1], 2)), ylab=paste('RDA2\nvar_exp =', signif(var_exp[2], 2)),
+         main=paste(i, ifelse(j == 1, 'all samples', levels(e$treatment)[j-1])),
+         sub=paste('community ~', paste(rda$call$formula[[3]][c(2,1,3)], collapse=''), collapse=''))
+    
+    # ch4
+    ordisurf(rda, e$ch4_rate, col='grey80', add=T)
+    
+    # indval (must do the indval before: L289-434)
+    points(spec[colnames(lst_iv[[i]]$iv_gr$mr),], col='orange', pch=19)
+    points(spec[colnames(lst_iv[[i]]$iv_ex$mr),], col='blue', pch=19)
+  }
+  
+  ### legend
+  plot.new()
+  legend(0.5,0.5, legend=unlist(sapply(en[,c('treatment','site','sampling_date')], levels)), bty='n', xjust=0.5, yjust=0.5,
+         col=c(col_treat, bg_site, 1,1,1), pt.bg=c(0,0, bg_site, 0,0,0), pch=c(rep(21,4), pch_smp_date), pt.lwd=2)
+  
+  dev.off()
+  
+  ### rda outputs foreach loop
+  return(lst_info)
+  
+}
+
+names(lst_pvs_rda) <- names(lst_data)
+
+file <- paste0(dir_save, '/lst_pvs_rda.Rdata')
+# save(lst_pvs_rda, file=file)
+load(file)
+#
 
 ### Pie chart ####
 print('pie-charts')
