@@ -232,8 +232,10 @@ lst_iv <- foreach(i = names(lst_data)) %dopar% {
     ord <- order(colSums(l$mr), decreasing=T)
     l$mr <- as.matrix(l$mr[,ord])
     # select iv for ass and reorder it decreasingly
-    l$ass <- ass[row.names(ass) %in% names(x),]
+    l$ass <- ass[names(x),]
     l$ass <- l$ass[ord,]
+    l$taxo <- taxo[names(x),]
+    l$taxo <- l$taxo[ord,]
     dimnames(l$mr) <- list(row.names(mr_ord), row.names(l$ass))
     return(l)
   })
@@ -356,6 +358,40 @@ lst_iv <- foreach(i = names(lst_data)) %dopar% {
 
 names(lst_iv) <- names(lst_data)
 
+### Pie chart ####
+print('pie-charts')
+
+lst_pie <- NULL
+for(i in names(lst_data)){
+  
+  mr <- lst_data[[i]]$mr_hc
+  taxo <- lst_data[[i]]$taxo
+  taxo <- taxo[row.names(taxo) %in% names(mr),]
+  mr <- mr[,grep('Bacteria', taxo$Reign)]
+  taxo <- taxo[grep('Bacteria', taxo$Reign),]
+  
+  en <- env[row.names(env) %in% row.names(mr),]
+  selec_smp <- list(tot=1:nrow(mr),
+                    grz=which(en$treatment == levels(en$treatment)[1]),
+                    exc=which(en$treatment == levels(en$treatment)[2]))
+  
+  if(i == 'V3V4'){
+    wdt <- 11
+    tax_lev <- 1:4
+  } else {
+    wdt <- 8
+    tax_lev <- 6:7
+  }
+  
+  # graf
+  pdf(paste0(dir_out, 'pie_', i, '.pdf'), width=wdt, height=11)
+  
+  lst_pie[[i]] <- list(pie=pie_taxo(mr, taxo, tax_lev=tax_lev, adj=0.1, cex=0.4, selec_smp=selec_smp), tax_lev=tax_lev)
+  
+  dev.off()
+  
+}
+
 ### RDA ####
 print('RDA')
 
@@ -427,14 +463,34 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
     # ch4
     ordisurf(rda, e$ch4_rate, col='grey80', add=T)
     
-    # Methylobacter
-    points(spec[t$Genus == 'Methylobacter',], col='orange', pch=19)
-    points(spec['X49',1], spec['X49',2], col=2)
-    
     # indval (must do the indval before: L289-434)
-    if(j != 1){
-      points(spec[colnames(lst_iv[[i]]$iv_gr$mr),], col='orange', pch=19)
-      points(spec[colnames(lst_iv[[i]]$iv_ex$mr),], col='blue', pch=19)
+    if(j == 1){
+      # OTUs
+      points(spec, pch=19, cex=0.01)
+      
+      for(k in names(lst_iv[[i]])){
+        ind_iv <- row.names(lst_iv[[i]][[k]]$taxo)
+        
+        if(length(ind_iv) > 1){
+          coord_iv <- spec[ind_iv,]
+        } else if (length(ind_iv) == 1){
+          coord_iv <- as.data.frame(t(spec[ind_iv,]))
+          row.names(coord_iv) <- ind_iv
+        } else {next}
+        
+        ind_tax_lev <- rev(lst_pie[[i]]$tax_lev)[1]
+        tax_iv <- t[row.names(coord_iv),ind_tax_lev]
+       
+        col_tax <- lst_pie[[i]]$pie$lst_pal[[names(t)[ind_tax_lev]]]
+        col_tax_iv <- NULL
+        for(l in tax_iv){
+          col_tax_iv <- c(col_tax_iv, col_tax[names(col_tax) == l])
+        }
+        
+        points(coord_iv, col=col_tax_iv, pch=19)
+        points(coord_iv, col=ifelse(k == 'iv_gr', 'orange', 'blue'))
+        text(coord_iv, row.names(coord_iv), cex=0.5, pos=3)
+      }
     }
   }
   
@@ -456,39 +512,6 @@ file <- paste0(dir_save, '/lst_pvs_rda.Rdata')
 # save(lst_pvs_rda, file=file)
 load(file)
 #
-
-### Pie chart ####
-print('pie-charts')
-
-for(i in names(lst_data)){
-  
-  mr <- lst_data[[i]]$mr_hc
-  taxo <- lst_data[[i]]$taxo
-  taxo <- taxo[row.names(taxo) %in% names(mr),]
-  mr <- mr[,grep('Bacteria', taxo$Reign)]
-  taxo <- taxo[grep('Bacteria', taxo$Reign),]
-  
-  en <- env[row.names(env) %in% row.names(mr),]
-  selec_smp <- list(tot=1:nrow(mr),
-                    grz=which(en$treatment == levels(en$treatment)[1]),
-                    exc=which(en$treatment == levels(en$treatment)[2]))
-
-  if(i == 'V3V4'){
-    wdt <- 11
-    tax_lev <- 1:4
-  } else {
-    wdt <- 8
-    tax_lev <- 6:7
-  }
-  
-  # graf
-  pdf(paste0(dir_out, 'pie_', i, '.pdf'), width=wdt, height=11)
-  
-  q <- pie_taxo(mr, taxo, tax_lev=tax_lev, adj=0.1, cex=0.4, selec_smp=selec_smp)
-  
-  dev.off()
-  
-}
 
 
 
