@@ -488,7 +488,7 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
         }
         
         points(coord_iv, col=col_tax_iv, pch=19)
-        points(coord_iv, col=ifelse(k == 'iv_gr', 'orange', 'blue'))
+        points(coord_iv, col=ifelse(k == 'iv_gr', 'red', 'green'))
         text(coord_iv, row.names(coord_iv), cex=0.5, pos=3)
       }
     }
@@ -513,9 +513,84 @@ file <- paste0(dir_save, '/lst_pvs_rda.Rdata')
 load(file)
 #
 
+#####
+# demande alex 16 mai 2019
+# Can you plot a simple stacked barplot with the methylococcales genera 
+# showing the proportion of methylococcales in the grazed sites and the
+# exclosures and the stacks being the different genera? 
 
+m <- lst_data$V3V4$mr_hc
+t <- lst_data$V3V4$taxo[names(m),]
+e <- env[row.names(m),]
+
+methy <- m[,t$Order == 'Methylococcales']
+t_methy <- data.frame(t[names(methy),], pid=lst_data$V3V4$ass[names(methy),'pid'])
+
+agg <- aggregate(methy, list(e$treatment), sum)
+row.names(agg) <- agg[,1]
+agg <- agg[,-1]
+agg <- aggregate(t(agg), list(t_methy$Genus), sum)
+row.names(agg) <- agg[,1]
+agg <- agg[,-1]
+
+barplot(as.matrix(agg), legend.text=row.names(agg))
+
+# but I prefer boxplots
+ord <- order(t_methy$Genus, colSums(methy))
+
+methy_sort <- methy[,ord]
+t_methy_sort <- t_methy[ord,]
+
+#---
+plot.new()
+par(mar=c(7,6,11,2))
+plot.window(c(1,ncol(methy)), range(methy_sort+1), log='y')
+usr <- par('usr')
+
+mtext('log sequence nb\nnormalized bo RNA ammount', 2, 3)
+box('plot')
+axis(2)
+
+lapply(seq_along(methy_sort), function(x){
+  ms <- methy_sort[,x]
+  pa <- factor(decostand(ms, 'pa'))
+  for(i in c('grazed','exclosed')){
+    ind_smp <- which(e$treatment == i)
+    x2 <- x-ifelse(i == 'grazed',-0.2,0.2)
+    points(rep(x2, nrow(methy_sort)/2), ms[ind_smp]+1, pch=19, cex=0.5, col=ifelse(i == 'grazed','red', 'green'))
+    text(x2, 3, table(pa[ind_smp])[2]/length(ind_smp), srt=90, cex=0.5)
+  }
+})
+
+tapply(methy_sort[,x])
+
+abline(v=1:(ncol(methy_sort)-1)+0.5, lty=2)
+
+axis(1, 1:(ncol(methy_sort)), names(methy_sort), las=2)
+axis(1, 1:(ncol(methy_sort)), t_methy_sort$pid, F, 3, las=2)
+
+tb <- table(droplevels(t_methy_sort$Genus))
+cs <- cumsum(tb)
+
+abline(v=cs+0.5)
+axis(3, c(0,rev(rev(cs)[-1]))+tb/2+0.5, names(tb), T, 0, las=2)
 
 
 #####
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
