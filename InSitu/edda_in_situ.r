@@ -30,7 +30,7 @@ pch_smp_date <- c(21:23)
 print('download')
 
 dir_in <- 'Projets/edda_phd/stat/in/'
-dir_out <- 'Projets/edda_phd/stat/InSitu/out/'
+dir_out <- 'Projets/edda_phd/stat/InSitu/out_without_rna_norm/'
 dir.create(dir_out, showWarnings=F)
 
 files <- list.files(dir_in)
@@ -135,7 +135,7 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
 
   if(co == 'mb661'){thresh <- c(465,474)} else if(co == 'A682'){thresh <- c(492,495)} else {thresh <- c(370,435)}
 
-  pdf(paste0(dir_out, 'seq_length_', co, '.pdf'))
+  pdf(paste0(dir_out, 'seq_length_', co, '_wo_norm.pdf'))
   
   plot(sort(seq_l), xlab='OTUs indexes', ylab='OTUs lengths')
   abline(h=thresh, col=2)
@@ -159,12 +159,12 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
     lst$taxo <- lst$taxo[-ind_0,]
   }  
   
-  # normalization according to DNA amount (pmoA communities)
-  if(co != 'V3V4'){
-    mr <- round(mr * env$RNA_extrac_pmoA)
-  } else {
-    mr <- round(mr * na.omit(env$RNA_extrac_SSU))
-  }
+  # # normalization according to DNA amount (pmoA communities)
+  # if(co != 'V3V4'){
+  #   mr <- round(mr * env$RNA_extrac_pmoA)
+  # } else {
+  #   mr <- round(mr * na.omit(env$RNA_extrac_SSU))
+  # }
 
   # normalization selection high occurence: high_occ 1/1000
   mr_hc <- as.data.frame(t(apply(mr, 1, function(x) ifelse(x >= 0.001 * sum(x), x, 0))))
@@ -188,7 +188,7 @@ names(lst_data) <- comm
 dir_save <- paste0(dir_out, 'saves')
 dir.create(dir_save, showWarnings=F)
 
-file <- paste0(dir_save, '/lst_data.Rdata')
+file <- paste0(dir_save, '/lst_data_wo_norm.Rdata')
 # save(lst_data, file=file)
 load(file)
 #
@@ -197,16 +197,27 @@ load(file)
 print('indval')
 
 # on the 2 pmoA communities (raw communities: normalized on DNA amount)
-lst_iv <- foreach(i = names(lst_data)) %dopar% {
+lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
   
-  mr_hc <- lst_data[[i]]$mr_hc
-  ass <- lst_data[[i]]$ass
-  taxo <- lst_data[[i]]$taxo
+  if(i != 'Methylococcales'){
+    mr_hc <- lst_data[[i]]$mr_hc
+    ass <- lst_data[[i]]$ass
+    taxo <- lst_data[[i]]$taxo
+  } else {
+    ass <- lst_data$V3V4$ass
+    n_mco <- row.names(ass)[grep(i, ass$taxo)]
+    
+    mr_hc <- lst_data$V3V4$mr_hc
+    mr_hc <- mr_hc[,names(mr_hc) %in% n_mco]
+    
+    ass <- ass[names(mr_hc),]
+    taxo <- lst_data$V3V4$taxo[names(mr_hc),]
+  }
   
   # sort samples by treatment, sampling, plot
   en <- env[row.names(env) %in% row.names(mr_hc),]
   ord_smp <- order(en$treatment, en$sampling_date, en$replicate)
-  en <- en[ord_smp,]
+  en <- droplevels(en[ord_smp,])
   mr_ord <- mr_hc[ord_smp,]
   
   # if(i == 'V3V4'){ # not concluent as the X49 OTU that is indval for grz is "drown" by the 10 other Methylobacter
@@ -216,45 +227,48 @@ lst_iv <- foreach(i = names(lst_data)) %dopar% {
   #   mr_ord <- as.data.frame(t(mr_ord[,-1]))
   # }
   
-  # indval
-  set.seed(0)
-  iv <- indval(mr_ord, en$treatment, numitr=1000)
-  
-  # for the grazed and exclozed
-  l_iv <- list(iv_gr=which(iv$maxcls == 1 & iv$pval <= 0.001),
-               iv_ex=which(iv$maxcls == 2 & iv$pval <= 0.001))
-  
-  # get the indval taxo assignations
-  l_iv <- lapply(l_iv, function(x) {
-    # select iv for mr and reorder it decreasingly
-    l <- NULL
-    l$mr <- as.matrix(mr_ord[,names(mr_ord) %in% names(x)])
-    ord <- order(colSums(l$mr), decreasing=T)
-    l$mr <- as.matrix(l$mr[,ord])
-    # select iv for ass and reorder it decreasingly
-    l$ass <- ass[names(x),]
-    l$ass <- l$ass[ord,]
-    l$taxo <- taxo[names(x),]
-    l$taxo <- l$taxo[ord,]
-    dimnames(l$mr) <- list(row.names(mr_ord), row.names(l$ass))
-    return(l)
-  })
-  
-  ### heatmap
-  # get the most abundant OTU with the indvals at the beginning
-  mr <- mr_ord[,order(colSums(mr_ord), decreasing=T)]
-  mr <- mr[,names(mr) %in% unlist(sapply(l_iv, function(x) row.names(x$ass))) == F]
-  n <- c(unlist(sapply(l_iv, function(x) colnames(x$mr))), names(mr))
-  mr <- cbind.data.frame(l_iv$iv_gr$mr, l_iv$iv_ex$mr, mr)
-  names(mr) <- n 
-  
-  # #1 indval sorted according to their abundance, #2 bigger OTUs until geting 90% of the community sequences
-  mr_abu <- mr[,cumsum(colSums(mr))/sum(mr) < 0.9]
-  ass_abu <- NULL
-  taxo_abu <- NULL
-  for(j in seq_along(mr_abu)) {
-    ass_abu <- rbind.data.frame(ass_abu, ass[row.names(ass) == names(mr_abu)[j],])
-    taxo_abu <- rbind.data.frame(taxo_abu, taxo[row.names(taxo) == names(mr_abu)[j],])
+  if(i != 'Methylococcales'){
+    # indval
+    set.seed(0)
+    iv <- indval(mr_ord, en$treatment, numitr=1000)
+    
+    # for the grazed and exclozed
+    l_iv <- list(iv_gr=which(iv$maxcls == 1 & iv$pval <= 0.001),
+                 iv_ex=which(iv$maxcls == 2 & iv$pval <= 0.001))
+    
+    # get the indval taxo assignations
+    l_iv <- lapply(l_iv, function(x) {
+      # select iv for mr and reorder it decreasingly
+      l <- NULL
+      l$mr <- as.matrix(mr_ord[,names(mr_ord) %in% names(x)])
+      ord <- order(colSums(l$mr), decreasing=T)
+      l$mr <- as.matrix(l$mr[,ord])
+      # select iv for ass and reorder it decreasingly
+      l$ass <- ass[names(x),]
+      l$ass <- l$ass[ord,]
+      l$taxo <- taxo[names(x),]
+      l$taxo <- l$taxo[ord,]
+      dimnames(l$mr) <- list(row.names(mr_ord), row.names(l$ass))
+      return(l)
+    })
+    
+    ### heatmap
+    # get the most abundant OTU with the indvals at the beginning
+    mr <- mr_ord[,order(colSums(mr_ord), decreasing=T)]
+    mr <- mr[,names(mr) %in% unlist(sapply(l_iv, function(x) row.names(x$ass))) == F]
+    n <- c(unlist(sapply(l_iv, function(x) colnames(x$mr))), names(mr))
+    mr <- cbind.data.frame(l_iv$iv_gr$mr, l_iv$iv_ex$mr, mr)
+    names(mr) <- n 
+    
+    # #1 indval sorted according to their abundance, #2 bigger OTUs until geting 90% of the community sequences
+    mr_abu <- mr[,cumsum(colSums(mr))/sum(mr) < ifelse(i == 'V3V4', 0.5, 0.9)]
+    ass_abu <- ass[names(mr_abu),]
+    taxo_abu <- taxo[names(mr_abu),]
+    
+  } else{
+    mr_abu <- mr_ord[,order(colSums(mr_ord), decreasing=T)]
+    ass_abu <- ass[names(mr_abu),]
+    taxo_abu <- taxo[names(mr_abu),]
   }
   
   # log transfo
@@ -277,7 +291,7 @@ lst_iv <- foreach(i = names(lst_data)) %dopar% {
   
   #---
   # heatmap
-  pdf(paste0(dir_out, 'heatmap_IV_', i, '_HC.pdf'), width=wdt, height=hei)
+  pdf(paste0(dir_out, 'heatmap_IV_', i, '_wo_norm_HC.pdf'), width=wdt, height=hei)
   par(mai=c(1.5,21,1, 0.5))
   
   # response
@@ -337,23 +351,26 @@ lst_iv <- foreach(i = names(lst_data)) %dopar% {
     ind <- ind+1
   }
   
-  # indval group
-  abline(h=nc - cumsum(sapply(l_iv, function(x) ncol(x$mr))), lwd=2, xpd=NA)
+  if(i != 'Methylococcales'){
+    # indval group
+    abline(h=nc - cumsum(sapply(l_iv, function(x) ncol(x$mr))), lwd=2, xpd=NA)
+  }
   
   # plot end
   dev.off()
   
   #---
   # fasta
-  file <- paste0(dir_out, 'IV_abu_', i, '_HC.fa')
+  file <- paste0(dir_out, 'IV_abu_', i, '_wo_norm_HC.fa')
   if(file.exists(file)){file.remove(file)}
   for(j in names(mr_abu)){
     a <- ass[row.names(ass) == j,]
     write.table(paste0('>', j, '_', a$taxo, '_', a$pid, '\n', a$seq), file, T, F, row.names=F, col.names=F)
   }
-  
-  
-  return(l_iv)
+
+  if(i != 'Methylococcales'){
+    return(l_iv)
+  }  
 }
 
 names(lst_iv) <- names(lst_data)
@@ -384,7 +401,7 @@ for(i in names(lst_data)){
   }
   
   # graf
-  pdf(paste0(dir_out, 'pie_', i, '.pdf'), width=wdt, height=11)
+  pdf(paste0(dir_out, 'pie_', i, '_wc_norm.pdf'), width=wdt, height=11)
   
   lst_pie[[i]] <- list(pie=pie_taxo(mr, taxo, tax_lev=tax_lev, adj=0.1, cex=0.4, selec_smp=selec_smp), tax_lev=tax_lev)
   
@@ -409,7 +426,7 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
   names(lst_info) <- c('tot', levels(en$treatment))
     
   ### test all samples, only grazed, only exclozed
-  pdf(paste0(dir_out, 'rda_high_occ_0.001_log_', i, '.pdf'), height=10, width=10)
+  pdf(paste0(dir_out, 'rda_high_occ_0.001_log_', i, '_wo_norm.pdf'), height=10, width=10)
   par(mfrow=c(2,2))
   
   for(j in seq_along(lst_info)){
@@ -461,7 +478,7 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
          sub=paste('community ~', paste(rda$call$formula[[3]][c(2,1,3)], collapse=''), collapse=''))
     
     # ch4
-    ordisurf(rda, e$ch4_rate, col='grey80', add=T)
+    # ordisurf(rda, e$ch4_rate, col='grey80', add=T)
     
     # indval (must do the indval before: L289-434)
     if(j == 1){
@@ -513,8 +530,7 @@ file <- paste0(dir_save, '/lst_pvs_rda.Rdata')
 load(file)
 #
 
-#####
-# demande alex 16 mai 2019
+### demande alex 16 mai 2019 ####
 # Can you plot a simple stacked barplot with the methylococcales genera 
 # showing the proportion of methylococcales in the grazed sites and the
 # exclosures and the stacks being the different genera? 
