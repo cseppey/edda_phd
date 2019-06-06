@@ -216,7 +216,7 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
   
   # sort samples by treatment, sampling, plot
   en <- env[row.names(env) %in% row.names(mr_hc),]
-  ord_smp <- order(en$treatment, en$sampling_date, en$replicate)
+  ord_smp <- order(en$treatment, en$sampling_date, en$site, en$replicate)
   en <- droplevels(en[ord_smp,])
   mr_ord <- mr_hc[ord_smp,]
   
@@ -277,7 +277,7 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
   
   uniq <- sort(unique(unlist(mr_rnd)))
   uniq <- uniq[uniq != 0]
-  mr_rnd <- as.data.frame(ifelse(as.matrix(mr_rnd) == 0, 0, as.matrix(mr_rnd)-min(uniq)))
+  mr_rnd <- as.data.frame(ifelse(as.matrix(mr_rnd) == 0, 0, as.matrix(mr_rnd)-min(uniq)+1))
   uniq <- uniq-min(uniq)+1
   
   nc <- ncol(mr_rnd)
@@ -478,7 +478,7 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
          sub=paste('community ~', paste(rda$call$formula[[3]][c(2,1,3)], collapse=''), collapse=''))
     
     # ch4
-    # ordisurf(rda, e$ch4_rate, col='grey80', add=T)
+    ordisurf(rda, e$ch4_rate, col='grey80', add=T)
     
     # indval (must do the indval before: L289-434)
     if(j == 1){
