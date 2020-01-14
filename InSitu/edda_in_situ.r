@@ -216,7 +216,7 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
   
   # sort samples by treatment, sampling, plot
   en <- env[row.names(env) %in% row.names(mr_hc),]
-  ord_smp <- order(en$treatment, en$sampling_date, en$site, en$replicate)
+  ord_smp <- order(en$treatment, en$sampling_date, en$site, en$replicate) #################, en$site, en$replicate)
   en <- droplevels(en[ord_smp,])
   mr_ord <- mr_hc[ord_smp,]
   
@@ -230,7 +230,7 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
   if(i != 'Methylococcales'){
     # indval
     set.seed(0)
-    iv <- indval(mr_ord, en$treatment, numitr=1000)
+    iv <- indval(mr_ord, en$treatment, numitr=permu) #################### , numitr=permu
     
     # for the grazed and exclozed
     l_iv <- list(iv_gr=which(iv$maxcls == 1 & iv$pval <= 0.001),
@@ -271,13 +271,13 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
     taxo_abu <- taxo[names(mr_abu),]
   }
   
-  # log transfo
+  # log transfo ####### 
   mr_abu_log <- decostand(mr_abu, 'log')
   mr_rnd <- ceiling(mr_abu_log)
   
   uniq <- sort(unique(unlist(mr_rnd)))
   uniq <- uniq[uniq != 0]
-  mr_rnd <- as.data.frame(ifelse(as.matrix(mr_rnd) == 0, 0, as.matrix(mr_rnd)-min(uniq)+1))
+  mr_rnd <- as.data.frame(ifelse(as.matrix(mr_rnd) == 0, 0, as.matrix(mr_rnd)-min(uniq)+1)) #########, as.matrix(mr_rnd)-min(uniq)+1)
   uniq <- uniq-min(uniq)+1
   
   nc <- ncol(mr_rnd)
@@ -308,15 +308,17 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
   
   # legend
   xs <- seq(0, usr[1]+diff(usr[1:2])*0.2, length.out=length(pal))
-  ys <- usr[3] - 1.5*rat_y
+  ys <- usr[3] - 3.5*rat_y #####################  - 1.5*rat_y
   
   points(xs, rep(ys, length(xs)), pch=19, col=pal, xpd=NA)
   
-  mtext(signif(2^seq(log(min(mr_abu[mr_abu != 0]),base=2), log(max(mr_abu),base=2), length.out=5), digits=2), 1, 2, 
+  mtext(signif(2^seq(log(min(mr_abu[mr_abu != 0]),base=2), log(max(mr_abu),base=2), length.out=5), digits=2), 1, 4, ####################  , 1, 2,
         at=seq(xs[1], xs[length(xs)], length.out=5), cex=0.75, las=2)
   
   # axes
   axis(2, seq(nc-0.5, 0.5), names(mr_rnd), F, las=2)
+  
+  axis(1, seq(1.5, nr+0.5), row.names(mr_rnd), F, las=2, family='mono') ###################
   
   # taxo
   axis(2, seq(nc-0.5, 0.5), ass_abu$pid, F, 3, las=2)
@@ -590,6 +592,77 @@ cs <- cumsum(tb)
 
 abline(v=cs+0.5)
 axis(3, c(0,rev(rev(cs)[-1]))+tb/2+0.5, names(tb), T, 0, las=2)
+
+
+### demande edda 11 oct 2019
+# get average and SD in function of the treatment for all V3V4 OTUs related to Methylococcales
+
+enV3V4 <- env[is.na(env$RNA_extrac_SSU) == F,]
+
+ass <- lst_data$V3V4$ass
+n_mco <- row.names(ass)[grep('Methylococcales', ass$taxo)]
+
+mr_relabu <- decostand(lst_data$V3V4$mr_hc, 'total')
+taxo_relabu <- lst_data$V3V4$taxo[names(mr_relabu),]
+
+mr_ra_met <- mr_relabu[,names(mr_relabu) %in% n_mco]
+
+taxo_ra_met <- lst_data$V3V4$taxo[names(mr_ra_met),]
+
+lst <- list(tot=list(mr   = mr_ra_met,
+                     taxo = taxo_ra_met),
+            met=list(mr   = decostand(mr_ra_met, 'total'),
+                     taxo = taxo_ra_met))
+
+for(i in lst) {
+  
+  mr <- i$mr
+  taxo <- i$taxo
+  
+  ind <- taxo$Genus == 'Methylobacter' | taxo$Genus == 'Crenothrix'
+
+  for(j in c('mean','sd')) {
+    
+    print(j)    
+    
+    q <- aggregate(t(mr[,ind]), list(taxo$Genus[ind]), j)
+    row.names(q) <- q$Group.1
+    q <- q[,-1]
+    
+    print(aggregate(t(q), list(enV3V4$treatment), mean))
+  }
+}
+
+#---
+# test if taxa's relative abundance is higher in grazed then exclosed
+
+# Methylococcales
+kruskal.test(rowSums(lst$tot$mr)~enV3V4$treatment)
+
+# the two genus
+for(i in seq_along(lst)){
+
+  mr <- lst[[i]]$mr
+  taxo <- lst[[i]]$taxo
+  
+  for(j in c('Crenothrix','Methylobacter')){
+    print(paste(j, c('within prok','within mcoccales')[i]))
+    print(kruskal.test(rowSums(mr[,taxo$Genus == j])~enV3V4$treatment))
+  }
+
+}
+
+# representativity of Creno + Mbact in Mcoccales
+
+ind_cm <- lst$met$taxo$Genus == 'Methylobacter' | lst$met$taxo$Genus == 'Crenothrix'
+
+cs_cm <- rowSums(lst$met$mr[rowSums(lst$met$mr) != 0,ind_cm])
+cs_ncm <- rowSums(lst$met$mr[rowSums(lst$met$mr) != 0,ind_cm == F])
+
+kruskal.test(cs_cm)
+
+boxplot(cs_cm, cs_ncm)
+
 
 
 #####
