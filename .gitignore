@@ -1,2 +1,3 @@
 old_script
-InSitu/out_without_rna_norm
+InSitu/out*
+experiment/out*
