@@ -1,6 +1,6 @@
-"Order" "Family" "Genus" "Species" "tot" "grazed" "exclozed" "ch4_normal" "ch4_augmentation"
-"1" "Gammaproteobacteria_X" "Gammaproteobacteria_XX" "Gammaproteobacteria_XXX" "Gammaproteobacteria_XXXX" 228368 163849 64519 135309 91759
-"2" "Methylococcales" "Methylococcaceae" "Methylobacter" "Methylobacter_tundripaludum" 27067 8087 18980 0 23238
-"3" "Methylococcales" "Methylococcaceae" "Methylobacter" "Methylobacter_X" 608174 351821 256353 195254 339102
-"4" "Methylococcales" "Methylococcaceae" "Methylomicrobium" "Methylomicrobium_japanense-related" 188049 50140 137909 88993 60180
-"12" "Methylococcales" "Methylococcales_X" "Methylococcales_XX" "Methylococcales_XXX" 3773 1958 1815 1351 2206
+"life" "Order" "Family" "Genus" "Species" "tot" "grazed" "exclozed" "ch4_normal" "ch4_augmentation"
+"1" "life" "Gammaproteobacteria_X" "Gammaproteobacteria_XX" "Gammaproteobacteria_XXX" "Gammaproteobacteria_XXXX" 228368 163849 64519 135309 91759
+"2" "life" "Methylococcales" "Methylococcaceae" "Methylobacter" "Methylobacter_tundripaludum" 27067 8087 18980 0 23238
+"3" "life" "Methylococcales" "Methylococcaceae" "Methylobacter" "Methylobacter_X" 608174 351821 256353 195254 339102
+"4" "life" "Methylococcales" "Methylococcaceae" "Methylomicrobium" "Methylomicrobium_japanense-related" 188049 50140 137909 88993 60180
+"11" "life" "life_X" "life_XX" "life_XXX" "life_XXXX" 3773 1958 1815 1351 2206

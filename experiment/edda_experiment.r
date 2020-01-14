@@ -28,6 +28,7 @@ print('download')
 
 dir_in <- 'Projets/edda_phd/stat/in/'
 dir_out <- 'Projets/edda_phd/stat/experiment/out/'
+dir_out <- 'Projets/edda_phd/stat/experiment/out_without_rna_norm/' # check line 147-148
 dir.create(dir_out, showWarnings=F)
 
 files <- list.files(dir_in)
@@ -67,7 +68,8 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
   lst$ass <- read.table(paste0(dir_in, 'grUngr', co, '_3pc.ass'), sep='\t') # with 3pc
   row.names(lst$ass) <- paste0('X', row.names(lst$ass))
   
-  names(lst$ass) <- c('OTU_id','e-value','pid','taxo','GB_id','seq')
+  dimnames(lst$ass) <- list(sub('X', ifelse(co == 'mb661', 'M', 'A'), row.names(lst$ass)),
+                            c('OTU_id','e-value','pid','taxo','GB_id','seq'))
   
   lst$ass$GB_id <- substr(as.character(lst$ass$GB_id), 2, nchar(as.character(lst$ass$GB_id)))
   
@@ -143,8 +145,11 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
     lst$taxo <- lst$taxo[-ind_0,]
   }  
   
-  # normalization according to DNA amount (pmoA communities)
-  mr <- round(mr * env$RNA_extrac_pmoA)
+  # adjust the names
+  names(mr) <- sub('X', ifelse(co == 'mb661', 'M', 'A'), names(mr))
+  
+  # # normalization according to DNA amount (pmoA communities)
+  # mr <- round(mr * env$RNA_extrac_pmoA)
   
   # normalization selection non rare: non rare 1/1000
   mr_nr <- mr[,colSums(mr) >= 0.001*sum(mr)]
@@ -177,7 +182,7 @@ load(file)
 print('RDA')
 
 # on the 2 communities
-lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
+lst_pvs_rda <- foreach(i = names(lst_data), .verbose=T) %dopar% {
   
   # save infos on 
   #   variables signif
@@ -483,14 +488,16 @@ for(i in names(lst_data)){
                     ch4_augmentation=env$ch4_manip == '1')
   
   #---
-  pdf(paste0(dir_out, 'pie_non_rare_0.001_', i, '.pdf'), height=15, width=7)
+  pdf(paste0(dir_out, 'pie_non_rare_0.001_', i, '.pdf'), height=7, width=7)
   
-  agg <- pie_taxo(mr, taxo, tax_lev=tax_lev, selec_smp=selec_smp)
+  agg <- pie_taxo(mr, taxo, tax_lev=tax_lev, selec_smp=selec_smp,
+                  mat_lay=matrix(c(0,1,2,3,0, 0,0,4,5,0, 6,6,6,6,6), nrow=3, byrow=T), wdt_lay=c(0.2,1,1,1,0.2),
+                  box=F, last_tax_text=F)
   
   dev.off()
   
   #---
-  write.table(agg, paste0(dir_out, 'pie_non_rare_0.001_', i, '.csv'))
+  write.table(agg$agg, file=paste0(dir_out, 'pie_non_rare_0.001_', i, '.csv'))
 }
 #####
 
