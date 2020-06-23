@@ -8,12 +8,14 @@ require(doSNOW)
 require(labdsv)
 require(plotrix)
 source('bin/src/my_prog/R/pie_taxo.r')
+source('bin/src/my_prog/R/pie_taxo_single.r')
 
 #---
 # cluster
 
 cl <- makeSOCKcluster(3)
 clusterEvalQ(cl, library(labdsv))
+clusterEvalQ(cl, library(plotrix))
 registerDoSNOW(cl)
 
 
@@ -24,6 +26,12 @@ col_treat <- c('red','green')
 bg_site <- c('grey20','grey70')
 pch_smp_date <- c(21:23)
 
+lwd=2
+
+# palette
+palette <- list(treatment=c(grazed='#219BBF', exclosed='#2F9434'),
+                site=c(SV1='#555454', SV2='#B3B2B2'),
+                bioindic=c(grazed='#1E0C80',exclosed='#10521D'))
 
 
 ### Download ####
@@ -123,14 +131,21 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
   #### mr
 
   mr <- read.table(paste0(dir_in, 'grUngr', co, '.mr'), h=T)
-
+  
   # remove shit
   if(co %in% names(shit)){
     mr <- mr[,-shit[[co]]]
     names(mr) <- paste('X', 1:nrow(lst$ass), sep='')
   }
-
-  # remove too long/sort sequences
+  
+  # remove samples not belonging to in-situ dataset
+  mr <- mr[row.names(mr) %in% row.names(env),]
+  mr <- mr[order(row.names(mr)),]
+  mr <- mr[,colSums(mr) != 0]
+  
+  print(c(sum(mr), ncol(mr)))
+  
+  # remove scrap OTUs: too long/sort sequences, archaea, Mitochondria, Chloroplast
   seq_l <- nchar(as.character(lst$ass$seq))
 
   if(co == 'mb661'){thresh <- c(465,474)} else if(co == 'A682'){thresh <- c(492,495)} else {thresh <- c(370,435)}
@@ -142,22 +157,41 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
   
   dev.off()
   
-  ind_length <- which(seq_l < thresh[1] | seq_l > thresh[2])
+  ind_length <- which(seq_l < thresh[1] | seq_l > thresh[2] | grepl('Archaea|Mitochondria|Chloroplast', lst$ass$taxo))
   mr <- mr[,-ind_length]
-  lst$ass <- lst$ass[-ind_length,]
-  lst$taxo <- lst$taxo[-ind_length,]
-  
-  # remove samples not belonging to in-situ dataset
-  mr <- mr[row.names(mr) %in% row.names(env),]
-  mr <- mr[order(row.names(mr)),]
-  
+  lst$ass <- lst$ass[row.names(lst$ass) %in% names(mr),]
+  lst$taxo <- lst$taxo[row.names(lst$taxo) %in% names(mr),]
+
   # remove null OTUs
   ind_0 <- which(colSums(mr) == 0)
   if(length(ind_0)){
     mr <- mr[,-ind_0]
     lst$ass <- lst$ass[-ind_0,]
     lst$taxo <- lst$taxo[-ind_0,]
-  }  
+  }
+  
+  lst$ass <- droplevels(lst$ass)
+  lst$taxo <- droplevels(lst$taxo)
+
+  # assign prefix to dataset
+  pref <- switch(co,
+                 'mb661'='M',
+                 'A682'='A',
+                 'V3V4'='X',
+                 'Methylococcales'='X')
+  
+  names(mr) <- row.names(lst$ass) <- row.names(lst$taxo) <- gsub('X', pref, names(mr))
+  
+  ###---%%%%
+  # the calculation of mean and extremum of the nb seq / smp is calculated here
+  print(c(mean(rowSums(mr)), range(rowSums(mr))))
+  print(c(sum(mr), ncol(mr)))
+  
+  hc <- as.data.frame(t(apply(mr, 1, function(x) ifelse(x >= 0.001 * sum(x), x, 0))))
+  hc <- hc[,colSums(hc) != 0]
+  
+  print(c(sum(hc), ncol(hc)))
+  ###---%%%%
   
   # # normalization according to DNA amount (pmoA communities)
   # if(co != 'V3V4'){
@@ -166,17 +200,30 @@ lst_data <- parLapply(cl, comm, function(co, env, dir_in, dir_out, files){
   #   mr <- round(mr * na.omit(env$RNA_extrac_SSU))
   # }
 
-  # normalization selection high occurence: high_occ 1/1000
-  mr_hc <- as.data.frame(t(apply(mr, 1, function(x) ifelse(x >= 0.001 * sum(x), x, 0))))
+  # relabu
+  mr_relabu <- as.matrix(decostand(mr, 'total'))
+  
+  # # normalization selection high occurence: high_occ 1/1000
+  # mr_hc <- as.data.frame(t(apply(mr, 1, function(x) ifelse(x >= 0.001 * sum(x), x, 0))))
+  # mr_hc <- mr_hc[,colSums(mr_hc) != 0]
+  mr_hc <- as.data.frame(ifelse(mr_relabu < 0.001, 0, mr_relabu))
   mr_hc <- mr_hc[,colSums(mr_hc) != 0]
   
-  # normalization distributon: log
-  mr_log <- decostand(mr_hc, 'log')
+  # # # normalization distributon: log
+  # mr_log <- decostand(mr_hc, 'log')
+  
+  # # relabu
+  # mr_relabu <- as.matrix(decostand(mr_hc, 'total'))
+  
+  # log relabu
+  mr_lra <- decostand(mr_hc, 'log')
   
   ###
   lst$mr <- mr
   lst$mr_hc <- mr_hc
-  lst$mr_log <- mr_log
+  # lst$mr_log <- mr_log
+  lst$mr_relabu <- mr_relabu
+  lst$mr_lra <- mr_lra
   
   return(lst)
   
@@ -188,7 +235,7 @@ names(lst_data) <- comm
 dir_save <- paste0(dir_out, 'saves')
 dir.create(dir_save, showWarnings=F)
 
-file <- paste0(dir_save, '/lst_data_wo_norm.Rdata')
+file <- paste0(dir_save, '/lst_data.Rdata')
 # save(lst_data, file=file)
 load(file)
 #
@@ -197,28 +244,30 @@ load(file)
 print('indval')
 
 # on the 2 pmoA communities (raw communities: normalized on DNA amount)
-lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
+lst_iv <- foreach(i = c(comm, 'Methylococcales')) %dopar% {
   
   if(i != 'Methylococcales'){
-    mr_hc <- lst_data[[i]]$mr_hc
+    mr <- lst_data[[i]]$mr_hc
+    # mr <- lst_data[[i]]$mr_relabu
     ass <- lst_data[[i]]$ass
     taxo <- lst_data[[i]]$taxo
   } else {
     ass <- lst_data$V3V4$ass
     n_mco <- row.names(ass)[grep(i, ass$taxo)]
     
-    mr_hc <- lst_data$V3V4$mr_hc
-    mr_hc <- mr_hc[,names(mr_hc) %in% n_mco]
+    mr <- lst_data$V3V4$mr_hc
+    # mr <- lst_data$V3V4$mr_relabu
+    mr <- mr[,names(mr) %in% n_mco]
     
-    ass <- ass[names(mr_hc),]
-    taxo <- lst_data$V3V4$taxo[names(mr_hc),]
+    ass <- ass[names(mr),]
+    taxo <- lst_data$V3V4$taxo[names(mr),]
   }
   
   # sort samples by treatment, sampling, plot
-  en <- env[row.names(env) %in% row.names(mr_hc),]
+  en <- env[row.names(env) %in% row.names(mr),]
   ord_smp <- order(en$treatment, en$sampling_date, en$site, en$replicate) #################, en$site, en$replicate)
   en <- droplevels(en[ord_smp,])
-  mr_ord <- mr_hc[ord_smp,]
+  mr_ord <- mr[ord_smp,]
   
   # if(i == 'V3V4'){ # not concluent as the X49 OTU that is indval for grz is "drown" by the 10 other Methylobacter
   #   taxo_ord <- taxo[names(mr_ord),]
@@ -263,13 +312,17 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
     # #1 indval sorted according to their abundance, #2 bigger OTUs until geting 90% of the community sequences
     mr_abu <- mr[,cumsum(colSums(mr))/sum(mr) < ifelse(i == 'V3V4', 0.5, 0.9)]
     ass_abu <- ass[names(mr_abu),]
-    taxo_abu <- taxo[names(mr_abu),]
+    taxo_abu <- as.matrix(taxo[names(mr_abu),])
     
   } else{
     mr_abu <- mr_ord[,order(colSums(mr_ord), decreasing=T)]
     ass_abu <- ass[names(mr_abu),]
-    taxo_abu <- taxo[names(mr_abu),]
+    taxo_abu <- as.matrix(taxo[names(mr_abu),])
   }
+  
+  taxo_abu[ass_abu$GB_id == '>CMS7','Species'] <- 'Methylobacter sp. CMS7'
+  taxo_abu[ass_abu$GB_id == '>MTUNv2','Species'] <- 'M. tundripaludum SV96'
+  taxo_abu[,'Species'] <- sub('C_', 'Candicatus ', taxo_abu[,'Species'])
   
   # log transfo ####### 
   mr_abu_log <- decostand(mr_abu, 'log')
@@ -278,61 +331,86 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
   uniq <- sort(unique(unlist(mr_rnd)))
   uniq <- uniq[uniq != 0]
   mr_rnd <- as.data.frame(ifelse(as.matrix(mr_rnd) == 0, 0, as.matrix(mr_rnd)-min(uniq)+1)) #########, as.matrix(mr_rnd)-min(uniq)+1)
-  uniq <- uniq-min(uniq)+1
+  # uniq <- uniq-min(uniq)+1
+  uniq <- uniq-min(uniq)
   
   nc <- ncol(mr_rnd)
   nr <- nrow(mr_rnd)
   
   # palette and pdf size
   pal <- colorRampPalette(c('blue','white','red'))(length(uniq))
+  lp <- length(pal)
   
-  wdt <- 30
+  # wdt <- 30
+  wdt <- 15
   hei <- 2.5+nc*0.25
   
   #---
   # heatmap
-  pdf(paste0(dir_out, 'heatmap_IV_', i, '_wo_norm_HC.pdf'), width=wdt, height=hei)
-  par(mai=c(1.5,21,1, 0.5))
+  cairo_pdf(paste0(dir_out, 'heatmap_IV_', i, '_wo_norm_RA_woA.pdf'), width=wdt, height=hei)
+  # par(mai=c(1.5,21,1, 0.5))
+  par(mai=c(1.5,5,1, 0.5))
   
   # response
   plot(NA, xlim=c(1,(nr+1)), ylim=c(0,nc), xaxs='i', yaxs='i', 
-       bty='n', axes=F, xlab='', ylab='')
+       bty='n', axes=F, xlab='', ylab='', xpd=NA)
   usr <- par('usr')
+  
   rat_y <- diff(grconvertY(0:1, 'inches','user')) * par('cin')[2]
   
   for(j in 1:nr){
     for(k in 1:nc){
-      rect(j, nc-(k-1), j+1, nc-k, col=ifelse(mr_rnd[j,k] == 0, 'grey', pal[mr_rnd[j,k]]), border=NA)
+      rect(j, nc-(k-1), j+1, nc-k, col=ifelse(mr_rnd[j,k] == 0, '#EAE9E9', pal[mr_rnd[j,k]]), border=NA)
     }
   }
   
   # legend
-  xs <- seq(0, usr[1]+diff(usr[1:2])*0.2, length.out=length(pal))
-  ys <- usr[3] - 3.5*rat_y #####################  - 1.5*rat_y
+  xs <- seq(0, usr[1]+diff(usr[1:2])*0.2, length.out=lp)
+  ys <- usr[3] - 1.5*rat_y #####################  - 1.5*rat_y
   
-  points(xs, rep(ys, length(xs)), pch=19, col=pal, xpd=NA)
+  # points(xs, rep(ys, lp), pch=19, col=pal, xpd=NA)
+  points(xs, rep(ys, lp), pch=22, bg=pal, col=1, cex=2, xpd=NA)
   
-  mtext(signif(2^seq(log(min(mr_abu[mr_abu != 0]),base=2), log(max(mr_abu),base=2), length.out=5), digits=2), 1, 4, ####################  , 1, 2,
-        at=seq(xs[1], xs[length(xs)], length.out=5), cex=0.75, las=2)
+  mtext(signif(2^seq(log(min(mr_abu[mr_abu != 0]),base=2), log(max(mr_abu),base=2), length.out=lp), digits=2),
+        1, 5, at=xs, cex=1, adj=0, las=2)
+  # text(xs, ys, signif(2^seq(log(min(mr_abu[mr_abu != 0]),base=2), log(max(mr_abu),base=2), length.out=lp), digits=2), 
+  #      pos=1, srt=90, xpd=NA, adj=0.1)
   
   # axes
   axis(2, seq(nc-0.5, 0.5), names(mr_rnd), F, las=2)
   
-  axis(1, seq(1.5, nr+0.5), row.names(mr_rnd), F, las=2, family='mono') ###################
+  # axis(1, seq(1.5, nr+0.5), row.names(mr_rnd), F, las=2, family='mono') ###################
   
   # taxo
-  axis(2, seq(nc-0.5, 0.5), ass_abu$pid, F, 3, las=2)
-  axis(2, seq(nc-0.5, 0.5), ass_abu$GB_id, F, 7, las=2)
+  # axis(2, seq(nc-0.5, 0.5), ass_abu$pid, F, 3, las=2)
+  # axis(2, seq(nc-0.5, 0.5), ass_abu$GB_id, F, 7, las=2)
   
-  start <- -125
-  shift <- 13
-  for(j in 1:(ncol(taxo_abu)-1)){
+  # start <- -125
+  # shift <- 13
+  xseg <- usr[1]-diff(usr[1:2])*ifelse(i == 'V3V4', 0.45, 0.3)
+  # for(j in 1:(ncol(taxo_abu)-1)){
+  for(j in ncol(taxo_abu)-1){
     for(k in 1:nrow(taxo_abu)){
-      text(start+shift*j, nc+0.5-k, taxo_abu[k,j], xpd=NA, pos=4)
+      # text(start+shift*j, nc+0.5-k, sub('_X+','',taxo_abu[k,j]), xpd=NA, pos=4)
+      text(xseg, nc+0.5-k, sub('_X+|_j.*','',taxo_abu[k,j]), xpd=NA, pos=4)
     }
   }
   
+  #---
+  mult <- switch(i,
+                 'mb661'=0.07,
+                 'A682'=0.07,
+                 'V3V4'=0.085,
+                 'Methylococcales'=0.1)
+  x <- usr[1]-diff(usr[1:2])*mult
+  segments(x, usr[3], x, usr[4], xpd=NA, lwd=lwd)
+  
+  box('plot', lwd=lwd)
+  
   # samples groups
+  txt <- list(treatment=c('Grazed','Exclosed'),
+              sampling_date=c('Summer 2016','Spring 2016','Summer 2015'),
+              site=c('SV1','SV2'))
   prev_lo <- 2
   ind <- 1
   line_done <- NULL
@@ -343,9 +421,13 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
     gr <- gr[-c(1, length(gr))]
     mod <- seq_along(gr) %% 2 == 1
     
-    mtext(levels(en[[j]]), 3, 3-ind, at=gr[mod], cex=1-(ind/10)+1/10)
-    segments(gr[mod == F & gr %in% line_done == F], usr[4] + (4-ind) * rat_y, 
-             gr[mod == F & gr %in% line_done == F], 0, xpd=NA, lty=ind)
+    mtext(txt[[j]], 3, 3.2-ind+(3-ind)*0.6, at=gr[mod], cex=ifelse(j != 'treatment', 1, 1.5), font=ifelse(j != 'treatment', 1, 2))
+    x <- gr[mod == F & gr %in% line_done == F]
+    if(i == 'V3V4' | i == 'Methylococcales'){
+      segments(x, usr[4] + (4-ind) * rat_y, x, 0, xpd=NA, lty=ind, lwd=lwd)
+    } else {
+      segments(x, usr[4] + rat_y, x, 0, xpd=NA, lty=ind, lwd=lwd)
+    }
     
     line_done <- c(line_done, gr[mod == F])
     
@@ -355,7 +437,9 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
   
   if(i != 'Methylococcales'){
     # indval group
-    abline(h=nc - cumsum(sapply(l_iv, function(x) ncol(x$mr))), lwd=2, xpd=NA)
+    # abline(h=nc - cumsum(sapply(l_iv, function(x) ncol(x$mr))), lwd=2, xpd=NA)
+    y <-nc - cumsum(sapply(l_iv, function(x) ncol(x$mr)))
+    segments(xseg, y, usr[2], y, lwd=2, xpd=NA)
   }
   
   # plot end
@@ -363,7 +447,7 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
   
   #---
   # fasta
-  file <- paste0(dir_out, 'IV_abu_', i, '_wo_norm_HC.fa')
+  file <- paste0(dir_out, 'IV_abu_', i, '_wo_norm_RA.fa')
   if(file.exists(file)){file.remove(file)}
   for(j in names(mr_abu)){
     a <- ass[row.names(ass) == j,]
@@ -375,38 +459,70 @@ lst_iv <- foreach(i = c(names(lst_data), 'Methylococcales')) %dopar% {
   }  
 }
 
-names(lst_iv) <- names(lst_data)
+names(lst_iv) <- comm
 
 ### Pie chart ####
 print('pie-charts')
 
 lst_pie <- NULL
-for(i in names(lst_data)){
-  
-  mr <- lst_data[[i]]$mr_hc
-  taxo <- lst_data[[i]]$taxo
-  taxo <- taxo[row.names(taxo) %in% names(mr),]
-  mr <- mr[,grep('Bacteria', taxo$Reign)]
-  taxo <- taxo[grep('Bacteria', taxo$Reign),]
-  
-  en <- env[row.names(env) %in% row.names(mr),]
-  selec_smp <- list(tot=1:nrow(mr),
-                    grz=which(en$treatment == levels(en$treatment)[1]),
-                    exc=which(en$treatment == levels(en$treatment)[2]))
+for(i in c(comm[3], 'MOB')){
   
   if(i == 'V3V4'){
-    wdt <- 11
-    tax_lev <- 1:4
+    mr <- lst_data[[i]]$mr_hc
+    # mr <- lst_data[[i]]$mr_relabu
+    taxo <- lst_data[[i]]$taxo
+    taxo <- taxo[row.names(taxo) %in% names(mr),]
+    # mr <- mr[,grep('Bacteria', taxo$Reign)]
+    # taxo <- taxo[grep('Bacteria', taxo$Reign),]
   } else {
-    wdt <- 8
+    mr <- cbind.data.frame(lst_data[['mb661']]$mr_hc, lst_data[['A682']]$mr_hc)
+    taxo <- rbind(lst_data[['mb661']]$taxo, lst_data[['A682']]$taxo)
+    taxo <- as.matrix(taxo[row.names(taxo) %in% names(mr),])
+    taxo <- as.data.frame(sub('_j.*','',taxo))
+  }
+  
+  en <- env[row.names(env) %in% row.names(mr),]
+  # selec_smp <- list(tot=1:nrow(mr),
+  #                   grz=which(en$treatment == levels(en$treatment)[1]),
+  #                   exc=which(en$treatment == levels(en$treatment)[2]))
+  
+  if(i == 'V3V4'){
+    tax_lev <- 1:4
+    selec_otu <- NULL 
+    row <- 1
+    selec_smp <- list(Grazed  =which(en$treatment == levels(en$treatment)[1]),
+                      Exclosed=which(en$treatment == levels(en$treatment)[2]))
+    hei <- 7
+  } else {
     tax_lev <- 6:7
+    selec_otu <- list(grep('M', names(mr), value=T), grep('A', names(mr), value=T),
+                      grep('M', names(mr), value=T), grep('A', names(mr), value=T))
+    row <- 2
+    selec_smp <- list(Grazed_mb661  =which(en$treatment == levels(en$treatment)[1]),
+                      Grazed_A682   =which(en$treatment == levels(en$treatment)[1]),
+                      Exclosed_mb661=which(en$treatment == levels(en$treatment)[2]),
+                      Exclosed_A682 =which(en$treatment == levels(en$treatment)[2]))
+    hei <- 11
   }
   
   # graf
-  pdf(paste0(dir_out, 'pie_', i, '_wc_norm.pdf'), width=wdt, height=11)
+  lst_pie[[i]] <- list(pie=pie_taxo(mr, taxo, tax_lev=tax_lev, adj=0.1, cex=0.4, show=F,
+                                    selec_smp=selec_smp, selec_otu=selec_otu, root='Bacteria'), tax_lev=tax_lev)
   
-  lst_pie[[i]] <- list(pie=pie_taxo(mr, taxo, tax_lev=tax_lev, adj=0.1, cex=0.4, selec_smp=selec_smp), tax_lev=tax_lev)
+  cairo_pdf(paste0(dir_out, 'pie_', i, '_wc_norm_RA_woA.pdf'), width=11, height=hei)
+
+  par(mfrow=c(row,2), mar=c(0,0,4,0))
+
+  ray <- 0.2
+  cex <- 0.7
   
+  agg <- lst_pie[[i]]$pie$agg
+  for(j in names(agg[sapply(agg, is.numeric)])){
+    plot.new()
+    pie_taxo_single(lst_pie[[i]]$pie, j, 0.5, 0.5, ray=ray, cex=cex)
+    title(sub('_',' ',j))  
+  }
+    
   dev.off()
   
 }
@@ -415,9 +531,10 @@ for(i in names(lst_data)){
 print('RDA')
 
 # on the 3 communities
-lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
+lst_pvs_rda <- foreach(i = comm) %dopar% {
   
-  mr_log <- lst_data[[i]]$mr_log
+  # mr_log <- lst_data[[i]]$mr_log
+  mr_log <- lst_data[[i]]$mr_lra
   en <- env[row.names(env) %in% row.names(mr_log),]
   
   # save infos on 
@@ -428,10 +545,13 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
   names(lst_info) <- c('tot', levels(en$treatment))
     
   ### test all samples, only grazed, only exclozed
-  pdf(paste0(dir_out, 'rda_high_occ_0.001_log_', i, '_wo_norm.pdf'), height=10, width=10)
-  par(mfrow=c(2,2))
-  
+  # pdf(paste0(dir_out, 'rda_high_occ_0.001_', i, '_wo_norm_RA_woA.pdf'), height=10, width=10)
+  # par(mfrow=c(2,2))
+  cairo_pdf(paste0(dir_out, 'rda_high_occ_0.001_', i, '_wo_norm_RA_woA.pdf'), height=5, width=7)
+  layout(matrix(c(1,2), nrow=1), width=c(1,0.5))
+
   for(j in seq_along(lst_info)){
+  # for(j in 1){
     
     # select samples
     ind_smp <- switch(j,
@@ -447,22 +567,24 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
     ### RDA
     # build formula
     if(j == 1){
-      formu <- as.formula('m ~ sampling_date * site + treatment * sampling_date + treatment * site + ch4_rate')
+      # formu <- as.formula('m ~ sampling_date * site + treatment * sampling_date + treatment * site + ch4_rate')
+      formu <- as.formula('m ~ treatment * sampling_date + Condition(site) + ch4_rate')
     } else {
-      formu <- as.formula('m ~ sampling_date * site + ch4_rate')
+      # formu <- as.formula('m ~ sampling_date * site + ch4_rate')
+      formu <- as.formula('m ~ sampling_date + Condition(site) + ch4_rate')
     }
     
     # rda
     rda <- capscale(formu, data=e)
     
     set.seed(0)
-    # ano_facvar <- anova(rda, by='terms', permutations=permu)
-    # ano_axes <- anova(rda, by='axis', permutations=permu)
-    # 
-    # signif <- c(ano_facvar$`Pr(>F)`, ano_axes$`Pr(>F)`)
-    # names(signif) <- c(row.names(ano_facvar), row.names(ano_axes))
-    # 
-    # lst_info[[j]] <- signif
+    ano_facvar <- anova(rda, by='terms', permutations=permu)
+    ano_axes <- anova(rda, by='axis', permutations=permu)
+
+    signif <- c(ano_facvar$`Pr(>F)`, ano_axes$`Pr(>F)`)
+    names(signif) <- c(row.names(ano_facvar), row.names(ano_axes))
+
+    lst_info[[j]] <- signif
     
     ### plot
     # characteristics
@@ -473,19 +595,31 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
     var_exp <- s$concont$importance[2,1:2]
     
     # plot
-    plot(sites, col=col_treat[as.numeric(e$treatment)], pch=pch_smp_date[as.numeric(e$sampling_date)], bg=bg_site[as.numeric(e$site)],
-         xlim=range(sites[,1]), ylim=range(sites[,2]), cex=1.5, lwd=3,
-         xlab=paste('RDA1\nvar_exp =', signif(var_exp[1], 2)), ylab=paste('RDA2\nvar_exp =', signif(var_exp[2], 2)),
-         main=paste(i, ifelse(j == 1, 'all samples', levels(e$treatment)[j-1])),
-         sub=paste('community ~', paste(rda$call$formula[[3]][c(2,1,3)], collapse=''), collapse=''))
+    # plot(sites, col=col_treat[as.numeric(e$treatment)], pch=pch_smp_date[as.numeric(e$sampling_date)], bg=bg_site[as.numeric(e$site)],
+         # cex=1.5, lwd=3, xlab=paste('RDA1\nvar_exp =', signif(var_exp[1], 2)), ylab=paste('RDA2\nvar_exp =', signif(var_exp[2], 2)),
+         # main=paste(i, ifelse(j == 1, 'all samples', levels(e$treatment)[j-1])),
+         #sub=paste('community ~', paste(rda$call$formula[[3]][c(2,1,3)], collapse=''), collapse=''))
+    par(mar=c(5,5,4,2))
+    plot(sites, type='n', xlab='', ylab='', main=paste(ifelse(i == 'V3V4','Bacterial','MOB'), 'community'))
+    
+    usr <- par('usr') 
+    
+    mtext(paste('RDA1\nvar exp =', signif(var_exp[1], 2)), 1, 3)
+    mtext(paste('RDA2\nvar exp =', signif(var_exp[2], 2)), 2, 2.5)
     
     # ch4
-    ordisurf(rda, e$ch4_rate, col='grey80', add=T)
+    ordisurf(rda, e$ch4_rate, col='black', add=T, cex.text=5)
+    
+    # points
+    points(sites[,1], sites[,2], cex=1.5, lwd=3, col=palette$treatment[as.numeric(e$treatment)],
+           pch=pch_smp_date[as.numeric(e$sampling_date)], bg=palette$site[as.numeric(e$site)])
+    
+    # ordispider(rda, e$site, col=1:2)
     
     # indval (must do the indval before: L289-434)
     if(j == 1){
       # OTUs
-      points(spec, pch=19, cex=0.01)
+      points(spec, pch=16, cex=0.1)
       
       for(k in names(lst_iv[[i]])){
         ind_iv <- row.names(lst_iv[[i]][[k]]$taxo)
@@ -496,27 +630,55 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
           coord_iv <- as.data.frame(t(spec[ind_iv,]))
           row.names(coord_iv) <- ind_iv
         } else {next}
+
+        col <- palette$bioindic[ifelse(k == 'iv_gr', 'grazed', 'exclosed')]
         
-        ind_tax_lev <- rev(lst_pie[[i]]$tax_lev)[1]
-        tax_iv <- t[row.names(coord_iv),ind_tax_lev]
-       
-        col_tax <- lst_pie[[i]]$pie$lst_pal[[names(t)[ind_tax_lev]]]
-        col_tax_iv <- NULL
-        for(l in tax_iv){
-          col_tax_iv <- c(col_tax_iv, col_tax[names(col_tax) == l])
-        }
+        # text(coord_iv, row.names(coord_iv), col=col, pos=3)
         
-        points(coord_iv, col=col_tax_iv, pch=19)
-        points(coord_iv, col=ifelse(k == 'iv_gr', 'red', 'green'))
-        text(coord_iv, row.names(coord_iv), cex=0.5, pos=3)
+        ord <- order(coord_iv[,2], decreasing=T)
+        coord_ord <- coord_iv[ord,]
+        
+        centro <- apply(coord_ord, 2, mean)
+        x <- centro[1] + diff(usr[1:2])*0.2 * ifelse(k == 'iv_gr', -1, 1)
+        ylim <- centro[2] + nrow(coord_ord)*1.5*c(0.2,-0.2)
+        ys <- seq(ylim[1], ylim[2], length.out=nrow(coord_ord))
+        
+        segments(coord_ord[,1], coord_ord[,2], x, ys, col='grey')
+        text(x, ys, row.names(coord_ord), col=col, pos=ifelse(k == 'iv_gr', 2, 4))
+        
+        points(coord_iv, pch=20, col=col)
+        
+        # ind_tax_lev <- rev(lst_pie[[i]]$tax_lev)[1]
+        # tax_iv <- t[row.names(coord_iv),ind_tax_lev]
+        # 
+        # col_tax <- lst_pie[[i]]$pie$lst_pal[[names(t)[ind_tax_lev]]]
+        # col_tax_iv <- NULL
+        # for(l in tax_iv){
+        #   col_tax_iv <- c(col_tax_iv, col_tax[names(col_tax) == l])
+        # }
+        # 
+        # points(coord_iv, col=col_tax_iv, pch=19)
+        # points(coord_iv, col=ifelse(k == 'iv_gr', 'red', 'green'))
+        # text(coord_iv, row.names(coord_iv), cex=0.5, pos=3)
       }
     }
   }
   
   ### legend
+  par(mar=rep(0,4))
   plot.new()
-  legend(0.5,0.5, legend=unlist(sapply(en[,c('treatment','site','sampling_date')], levels)), bty='n', xjust=0.5, yjust=0.5,
-         col=c(col_treat, bg_site, 1,1,1), pt.bg=c(0,0, bg_site, 0,0,0), pch=c(rep(21,4), pch_smp_date), pt.lwd=2)
+  # legend(0.5,0.5, legend=unlist(sapply(en[,c('treatment','site','sampling_date')], levels)), bty='n', xjust=0.5, yjust=0.5,
+  #        col=c(col_treat, bg_site, 1,1,1), pt.bg=c(0,0, bg_site, 0,0,0), pch=c(rep(21,4), pch_smp_date), pt.lwd=2)
+  leg <- c('Grazed','Exclosed','SV1','SV2','Summer 2016','Spring 2016','Summer 2015','Bioindicator Grazed','Bioindicator Exclosed','OTUs')
+  pch <- 21:23
+  if(i == 'V3V4'){
+    leg <- leg[-7]
+    pch <- 21:22
+  }
+  legend(0.5,0.5, legend=leg, bty='n', xjust=0.5, yjust=0.5,
+         pch=c(rep(22,4), pch, rep(20,3)), 
+         col=c(palette$treatment, palette$site, rep(1,length(pch)), palette$bioindic, 1),
+         pt.bg=c(0,0, palette$site, rep(0,length(pch)), 0,0,0), pt.lwd=2)
   
   dev.off()
   
@@ -525,7 +687,7 @@ lst_pvs_rda <- foreach(i = names(lst_data)) %dopar% {
   
 }
 
-names(lst_pvs_rda) <- names(lst_data)
+names(lst_pvs_rda) <- comm
 
 file <- paste0(dir_save, '/lst_pvs_rda.Rdata')
 # save(lst_pvs_rda, file=file)
@@ -594,19 +756,20 @@ abline(v=cs+0.5)
 axis(3, c(0,rev(rev(cs)[-1]))+tb/2+0.5, names(tb), T, 0, las=2)
 
 
-### demande edda 11 oct 2019
+### demande edda 11 oct 2019 ####
 # get average and SD in function of the treatment for all V3V4 OTUs related to Methylococcales
 
 enV3V4 <- env[is.na(env$RNA_extrac_SSU) == F,]
 
 ass <- lst_data$V3V4$ass
-n_mco <- row.names(ass)[grep('Methylococcales', ass$taxo)]
+# n_mco <- row.names(ass)[grep('Methylococcales', ass$taxo)]
+n_mco <- row.names(ass)[grepl('Methylococcales', ass$taxo) & row.names(ass) %in% names(lst_data$V3V4$mr_hc)]
 
-mr_relabu <- decostand(lst_data$V3V4$mr_hc, 'total')
+# mr_relabu <- lst_data$V3V4$mr_relabu
+mr_relabu <- lst_data$V3V4$mr_hc
 taxo_relabu <- lst_data$V3V4$taxo[names(mr_relabu),]
 
 mr_ra_met <- mr_relabu[,names(mr_relabu) %in% n_mco]
-
 taxo_ra_met <- lst_data$V3V4$taxo[names(mr_ra_met),]
 
 lst <- list(tot=list(mr   = mr_ra_met,
@@ -640,6 +803,7 @@ for(i in lst) {
 kruskal.test(rowSums(lst$tot$mr)~enV3V4$treatment)
 
 # the two genus
+par(mfrow=c(2,2))
 for(i in seq_along(lst)){
 
   mr <- lst[[i]]$mr
@@ -648,6 +812,7 @@ for(i in seq_along(lst)){
   for(j in c('Crenothrix','Methylobacter')){
     print(paste(j, c('within prok','within mcoccales')[i]))
     print(kruskal.test(rowSums(mr[,taxo$Genus == j])~enV3V4$treatment))
+    boxplot(rowSums(mr[,taxo$Genus == j])~enV3V4$treatment)
   }
 
 }
@@ -659,7 +824,7 @@ ind_cm <- lst$met$taxo$Genus == 'Methylobacter' | lst$met$taxo$Genus == 'Crenoth
 cs_cm <- rowSums(lst$met$mr[rowSums(lst$met$mr) != 0,ind_cm])
 cs_ncm <- rowSums(lst$met$mr[rowSums(lst$met$mr) != 0,ind_cm == F])
 
-kruskal.test(cs_cm)
+kruskal.test(cs_cm, cs_ncm)
 
 boxplot(cs_cm, cs_ncm)
 
