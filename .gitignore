@@ -1,4 +1,5 @@
 old_script
 InSitu/out*
-InSitu/out_without_rna_norm
+InSitu/out_without_rna_norm*
+experiment/out*
 experiment/out*
